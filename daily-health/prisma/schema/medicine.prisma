@@ -1,0 +1,157 @@
+// modules/medicine: medicine catalog, medication plans, dose times and dose logs
+// (erd.md → "মেডিসিন অ্যালার্ম"). Patient, user and prescription ids are plain uuids
+// (`ref users.PatientProfile`, `ref auth.User`, `ref prescriptions.PrescriptionItem`).
+// Dose alarms ring on the phone (expo-notifications); the server only keeps the
+// DOSE_BACKUP reminder in the notifications module.
+
+enum MedicineForm {
+  TABLET
+  CAPSULE
+  SYRUP
+  SUSPENSION
+  DROPS
+  INJECTION
+  INSULIN
+  INHALER
+  CREAM
+  OINTMENT
+  GEL
+  SUPPOSITORY
+  POWDER
+  OTHER
+
+  @@schema("medicine")
+}
+
+enum MealTiming {
+  BEFORE_MEAL
+  AFTER_MEAL
+  WITH_MEAL
+  ANY
+
+  @@schema("medicine")
+}
+
+enum DoseStatus {
+  PENDING
+  TAKEN
+  MISSED
+  SKIPPED
+  SNOOZED
+
+  @@schema("medicine")
+}
+
+/// Who marked the dose: the patient in the app, a reply to the backup SMS, or a family member.
+enum DoseSource {
+  APP
+  SMS
+  CAREGIVER
+
+  @@schema("medicine")
+}
+
+/// Searchable catalog (pg_trgm indexes in the migration). Patients may also add a medicine that is not listed.
+model Medicine {
+  id           String       @id @default(uuid(7)) @db.Uuid
+  brandName    String
+  genericName  String
+  /// e.g. "500 mg", "120 mg/5 ml"
+  strength     String
+  form         MedicineForm
+  manufacturer String?
+  unitPrice    Decimal?     @db.Decimal(10, 2)
+  isActive     Boolean      @default(true)
+  createdAt    DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime     @updatedAt @db.Timestamptz(3)
+
+  plans MedicationPlan[]
+
+  @@unique([brandName, strength, form])
+  @@index([brandName(ops: raw("gin_trgm_ops"))], type: Gin, map: "Medicine_brandName_trgm_idx")
+  @@index([genericName(ops: raw("gin_trgm_ops"))], type: Gin, map: "Medicine_genericName_trgm_idx")
+  @@schema("medicine")
+}
+
+/// One medicine a patient takes. The dose lives on each MedicationTime (`1+0+½`).
+model MedicationPlan {
+  id                 String     @id @default(uuid(7)) @db.Uuid
+  /// ref users.PatientProfile
+  patientId          String     @db.Uuid
+  medicineId         String?    @db.Uuid
+  /// ref prescriptions.PrescriptionItem
+  prescriptionItemId String?    @db.Uuid
+  /// "Sergel 20mg", shown in alarms and lists.
+  displayName        String
+  /// tablet, capsule, ml, puff, unit
+  doseUnit           String
+  mealTiming         MealTiming @default(ANY)
+  /// 30 = 30 minutes before/after the meal.
+  mealOffsetMin      Int?       @db.SmallInt
+  startDate          DateTime   @db.Date
+  /// null = ongoing.
+  endDate            DateTime?  @db.Date
+  /// In doseUnit; null = not tracked.
+  stockQty           Decimal?   @db.Decimal(8, 2)
+  refillAlertDays    Int        @default(5) @db.SmallInt
+  isActive           Boolean    @default(true)
+  /// When it was stopped (isActive = false). Doses before this still count in history.
+  stoppedAt          DateTime?  @db.Timestamptz(3)
+  /// ref auth.User
+  createdByUserId    String     @db.Uuid
+  createdAt          DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime   @updatedAt @db.Timestamptz(3)
+
+  medicine Medicine?        @relation(fields: [medicineId], references: [id], onDelete: SetNull)
+  times    MedicationTime[]
+  doseLogs DoseLog[]
+
+  @@index([patientId, isActive])
+  @@schema("medicine")
+}
+
+/// A time of day (Asia/Dhaka) with its own dose and weekdays.
+model MedicationTime {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  planId    String   @db.Uuid
+  /// Asia/Dhaka wall-clock time.
+  timeOfDay DateTime @db.Time(0)
+  /// 0.5, 1, 2 (in the plan's doseUnit).
+  dose      Decimal  @db.Decimal(5, 2)
+  /// Bit 0 = Sunday … bit 6 = Saturday; 127 = every day.
+  daysMask  Int      @default(127) @db.SmallInt
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  plan     MedicationPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  doseLogs DoseLog[]
+
+  @@index([planId])
+  @@schema("medicine")
+}
+
+/// One scheduled dose. Created ahead of time by the scheduler (or when the app records it).
+model DoseLog {
+  id               String      @id @default(uuid(7)) @db.Uuid
+  planId           String      @db.Uuid
+  /// Kept when the plan's times are edited later (then null).
+  medicationTimeId String?     @db.Uuid
+  scheduledFor     DateTime    @db.Timestamptz(3)
+  /// Snapshot of MedicationTime.dose.
+  dose             Decimal     @db.Decimal(5, 2)
+  status           DoseStatus  @default(PENDING)
+  actedAt          DateTime?   @db.Timestamptz(3)
+  /// ref auth.User
+  actedByUserId    String?     @db.Uuid
+  snoozedUntil     DateTime?   @db.Timestamptz(3)
+  source           DoseSource?
+  createdAt        DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime    @updatedAt @db.Timestamptz(3)
+
+  plan           MedicationPlan  @relation(fields: [planId], references: [id], onDelete: Cascade)
+  medicationTime MedicationTime? @relation(fields: [medicationTimeId], references: [id], onDelete: SetNull)
+
+  @@unique([planId, scheduledFor])
+  @@index([status, scheduledFor])
+  @@schema("medicine")
+}

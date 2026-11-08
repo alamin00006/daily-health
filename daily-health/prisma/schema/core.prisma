@@ -1,0 +1,16 @@
+// core: infrastructure tables shared by every module (not a feature module).
+
+/// "Last number + 1" for readable IDs (PR-2611-0042), one row per kind and month.
+/// Incremented atomically (INSERT … ON CONFLICT DO UPDATE … RETURNING), so two
+/// signups at the same moment never get the same number.
+model ReadableIdCounter {
+  /// PATIENT, DOCTOR, NUTRITIONIST, PHYSIO, MODERATOR, ADMIN, BOOKING
+  kind      String
+  /// YYMM in Asia/Dhaka, e.g. "2611"
+  period    String
+  lastValue Int
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  @@id([kind, period])
+  @@schema("core")
+}

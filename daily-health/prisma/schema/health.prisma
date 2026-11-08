@@ -1,0 +1,120 @@
+// modules/health-profile: vitals, conditions and allergies, QR health card
+// (erd.md → "স্বাস্থ্য প্রোফাইল ও রেকর্ড"). Patient and user ids are plain uuids
+// (`ref users.PatientProfile`, `ref auth.User`): no FK across module schemas.
+// `Bytes` columns are AES-256-GCM ciphertext from core/crypto (erd.md → "এনক্রিপশন").
+
+enum VitalType {
+  BP
+  GLUCOSE
+  WEIGHT
+  PULSE
+  TEMP
+  SPO2
+
+  @@schema("health")
+}
+
+/// When a glucose reading was taken (GLUCOSE only; CHECK in the migration).
+enum VitalContext {
+  FASTING
+  AFTER_MEAL
+  RANDOM
+
+  @@schema("health")
+}
+
+/// Computed by the API from the reading (vital-status.ts), stored so lists and charts can filter in SQL.
+enum VitalStatus {
+  NORMAL
+  CONTROLLED
+  HIGH
+  LOW
+
+  @@schema("health")
+}
+
+enum ConditionKind {
+  CHRONIC
+  ALLERGY
+  SURGERY
+
+  @@schema("health")
+}
+
+/// Numbers stay plain for trend charts and status filters; only the note is encrypted.
+/// BP uses systolic/diastolic, every other type uses value (CHECK in the migration).
+model VitalReading {
+  id               String        @id @default(uuid(7)) @db.Uuid
+  /// ref users.PatientProfile
+  patientId        String        @db.Uuid
+  type             VitalType
+  systolic         Int?          @db.SmallInt
+  diastolic        Int?          @db.SmallInt
+  value            Decimal?      @db.Decimal(6, 2)
+  /// Fixed per type: mmHg, mmol/L, kg, bpm, °C, %.
+  unit             String
+  context          VitalContext?
+  /// null when it cannot be judged (WEIGHT without the profile's height).
+  status           VitalStatus?
+  /// enc: health.VitalReading.note
+  note             Bytes?
+  /// ref auth.User
+  recordedByUserId String        @db.Uuid
+  measuredAt       DateTime      @db.Timestamptz(3)
+  createdAt        DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime      @updatedAt @db.Timestamptz(3)
+
+  @@index([patientId, type, measuredAt])
+  @@index([patientId, measuredAt])
+  @@schema("health")
+}
+
+model MedicalCondition {
+  id        String        @id @default(uuid(7)) @db.Uuid
+  /// ref users.PatientProfile
+  patientId String        @db.Uuid
+  /// enc: health.MedicalCondition.name
+  name      Bytes
+  kind      ConditionKind
+  since     DateTime?     @db.Date
+  /// enc: health.MedicalCondition.note
+  note      Bytes?
+  createdAt DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime      @updatedAt @db.Timestamptz(3)
+
+  @@index([patientId, kind])
+  @@schema("health")
+}
+
+/// One card per profile. Rotating issues a new qrToken, so a lost printed card stops working.
+model HealthCard {
+  id        String    @id @default(uuid(7)) @db.Uuid
+  /// ref users.PatientProfile
+  patientId String    @unique @db.Uuid
+  /// Random, URL-safe; the only thing the QR code contains.
+  qrToken   String    @unique
+  isActive  Boolean   @default(true)
+  /// null = does not expire.
+  expiresAt DateTime? @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(3)
+
+  accesses HealthCardAccess[]
+
+  @@schema("health")
+}
+
+/// Every scan of a health card, shown to the profile's members.
+model HealthCardAccess {
+  id           String   @id @default(uuid(7)) @db.Uuid
+  healthCardId String   @db.Uuid
+  /// ref auth.User; null for an anonymous scan (e.g. a hospital's phone camera).
+  viewerUserId String?  @db.Uuid
+  ip           String?
+  accessedAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  healthCard HealthCard @relation(fields: [healthCardId], references: [id], onDelete: Cascade)
+
+  @@index([healthCardId, accessedAt])
+  @@schema("health")
+}

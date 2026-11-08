@@ -1,0 +1,209 @@
+import { HttpStatus, Injectable } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { emitAuditEvent } from '../../common/events/audit-event.js';
+import { AppException } from '../../common/errors/app-exception.js';
+import { ColumnEncryptionService } from '../../core/crypto/column-encryption.service.js';
+import { PrismaService } from '../../core/prisma/prisma.service.js';
+import type {
+  ConditionKind,
+  MedicalCondition,
+} from '../../generated/prisma/client.js';
+import type { PaginatedResponse } from '../../shared-contracts/common-fields.contract.js';
+import type {
+  CreateConditionRequest,
+  MedicalConditionResponse,
+  UpdateConditionRequest,
+} from '../../shared-contracts/health.contract.js';
+import type { ProfileAccess } from '../users/profile-access.service.js';
+import { HealthProfileErrorCode } from './health-profile-error-codes.js';
+
+const NAME_CONTEXT = 'health.MedicalCondition.name';
+const NOTE_CONTEXT = 'health.MedicalCondition.note';
+
+/** Chronic conditions, allergies and past surgeries. Names and notes are encrypted. */
+@Injectable()
+export class MedicalConditionsService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly encryption: ColumnEncryptionService,
+    private readonly events: EventEmitter2,
+  ) {}
+
+  async create(
+    userId: string,
+    access: ProfileAccess,
+    input: CreateConditionRequest,
+  ): Promise<MedicalConditionResponse> {
+    const condition = await this.prisma.medicalCondition.create({
+      data: {
+        patientId: access.profile.id,
+        kind: input.kind,
+        name: this.encryption.encrypt(input.name, NAME_CONTEXT),
+        since: toDate(input.since),
+        note: this.encryption.encryptNullable(input.note, NOTE_CONTEXT),
+      },
+    });
+    this.audit(userId, access, 'condition.create', condition.id, {
+      kind: condition.kind,
+    });
+    return this.toResponse(condition);
+  }
+
+  /**
+   * All conditions of a profile (a handful per patient, so not paginated),
+   * chronic first. Sorted by name in memory because names are encrypted.
+   */
+  async list(
+    userId: string,
+    access: ProfileAccess,
+    kind?: ConditionKind,
+  ): Promise<PaginatedResponse<MedicalConditionResponse>> {
+    const rows = await this.prisma.medicalCondition.findMany({
+      where: { patientId: access.profile.id, ...(kind ? { kind } : {}) },
+      orderBy: [{ createdAt: 'asc' }],
+    });
+    this.audit(userId, access, 'condition.view', access.profile.id, {
+      kind: kind ?? 'ALL',
+    });
+    return {
+      data: rows.map((row) => this.toResponse(row)).sort(byKindThenName),
+      meta: { cursor: null, hasMore: false },
+    };
+  }
+
+  async update(
+    userId: string,
+    access: ProfileAccess,
+    conditionId: string,
+    input: UpdateConditionRequest,
+  ): Promise<MedicalConditionResponse> {
+    await this.findOwned(access, conditionId);
+    const condition = await this.prisma.medicalCondition.update({
+      where: { id: conditionId },
+      data: {
+        ...(input.kind !== undefined ? { kind: input.kind } : {}),
+        ...(input.name !== undefined
+          ? { name: this.encryption.encrypt(input.name, NAME_CONTEXT) }
+          : {}),
+        ...(input.since !== undefined ? { since: toDate(input.since) } : {}),
+        ...(input.note !== undefined
+          ? { note: this.encryption.encryptNullable(input.note, NOTE_CONTEXT) }
+          : {}),
+      },
+    });
+    this.audit(userId, access, 'condition.update', conditionId, {
+      fields: Object.keys(input).sort().join(','),
+    });
+    return this.toResponse(condition);
+  }
+
+  async remove(
+    userId: string,
+    access: ProfileAccess,
+    conditionId: string,
+  ): Promise<void> {
+    const { count } = await this.prisma.medicalCondition.deleteMany({
+      where: { id: conditionId, patientId: access.profile.id },
+    });
+    if (count === 0) throw conditionNotFound();
+    this.audit(userId, access, 'condition.delete', conditionId);
+  }
+
+  /**
+   * Decrypted names grouped by kind, for the health card scan. The caller
+   * (HealthCardsService) has already checked that the card is valid.
+   */
+  async namesByKind(
+    patientId: string,
+  ): Promise<Record<ConditionKind, string[]>> {
+    const rows = await this.prisma.medicalCondition.findMany({
+      where: { patientId },
+      select: { kind: true, name: true },
+    });
+    const result: Record<ConditionKind, string[]> = {
+      CHRONIC: [],
+      ALLERGY: [],
+      SURGERY: [],
+    };
+    for (const row of rows) {
+      result[row.kind].push(this.encryption.decrypt(row.name, NAME_CONTEXT));
+    }
+    for (const names of Object.values(result)) names.sort(compareBangla);
+    return result;
+  }
+
+  private async findOwned(
+    access: ProfileAccess,
+    conditionId: string,
+  ): Promise<MedicalCondition> {
+    const condition = await this.prisma.medicalCondition.findFirst({
+      where: { id: conditionId, patientId: access.profile.id },
+    });
+    if (!condition) throw conditionNotFound();
+    return condition;
+  }
+
+  private audit(
+    userId: string,
+    access: ProfileAccess,
+    action: string,
+    entityId: string,
+    meta?: Record<string, string>,
+  ): void {
+    emitAuditEvent(this.events, {
+      actorUserId: userId,
+      patientId: access.profile.id,
+      action,
+      entityType: 'MedicalCondition',
+      entityId,
+      ...(meta ? { meta } : {}),
+    });
+  }
+
+  private toResponse(condition: MedicalCondition): MedicalConditionResponse {
+    return {
+      id: condition.id,
+      name: this.encryption.decrypt(condition.name, NAME_CONTEXT),
+      kind: condition.kind,
+      since: condition.since
+        ? condition.since.toISOString().slice(0, 10)
+        : null,
+      note: this.encryption.decryptNullable(condition.note, NOTE_CONTEXT),
+      createdAt: condition.createdAt.toISOString(),
+      updatedAt: condition.updatedAt.toISOString(),
+    };
+  }
+}
+
+const KIND_ORDER: Record<ConditionKind, number> = {
+  CHRONIC: 0,
+  ALLERGY: 1,
+  SURGERY: 2,
+};
+
+function byKindThenName(
+  a: MedicalConditionResponse,
+  b: MedicalConditionResponse,
+): number {
+  return (
+    KIND_ORDER[a.kind] - KIND_ORDER[b.kind] || compareBangla(a.name, b.name)
+  );
+}
+
+const banglaCollator = new Intl.Collator('bn');
+function compareBangla(a: string, b: string): number {
+  return banglaCollator.compare(a, b);
+}
+
+/** undefined = not sent, null = clear. */
+function toDate(date: string | null | undefined): Date | null {
+  return date ? new Date(`${date}T00:00:00.000Z`) : null;
+}
+
+function conditionNotFound(): AppException {
+  return new AppException(
+    HealthProfileErrorCode.CONDITION_NOT_FOUND,
+    'Condition not found',
+    HttpStatus.NOT_FOUND,
+  );
+}

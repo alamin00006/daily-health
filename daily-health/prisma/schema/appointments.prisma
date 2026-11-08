@@ -1,0 +1,153 @@
+// modules/appointments: bookings, their history and follow-ups
+// (erd.md → "অ্যাপয়েন্টমেন্ট ও ফলো-আপ"). Patient, user, provider, chamber and
+// schedule ids are plain uuids (`ref users.PatientProfile`, `ref auth.User`,
+// `ref providers.*`). The payment is found by Payment(purpose, referenceId).
+
+enum AppointmentMode {
+  IN_PERSON
+  VIDEO
+  CHAT
+  HOME_VISIT
+
+  @@schema("appointments")
+}
+
+enum AppointmentKind {
+  NEW
+  FOLLOW_UP
+
+  @@schema("appointments")
+}
+
+enum AppointmentStatus {
+  /// Slot held for holdExpiresAt; becomes EXPIRED if not paid.
+  PENDING_PAYMENT
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+  EXPIRED
+
+  @@schema("appointments")
+}
+
+enum AppointmentActor {
+  PATIENT
+  PROVIDER
+  SYSTEM
+
+  @@schema("appointments")
+}
+
+enum FollowUpMode {
+  IN_PERSON
+  VIDEO
+  HOME_VISIT
+
+  @@schema("appointments")
+}
+
+enum FollowUpStatus {
+  UPCOMING
+  DONE
+  MISSED
+  CANCELLED
+
+  @@schema("appointments")
+}
+
+/// Double booking is blocked by two partial unique indexes (raw SQL in the migration):
+/// IN_PERSON (scheduleId, sessionDate, serialNo) and the time-slot modes (providerId, scheduledAt),
+/// both ignoring CANCELLED and EXPIRED rows.
+model Appointment {
+  id                  String            @id @default(uuid(7)) @db.Uuid
+  /// "BK-2611-0042"; shown to people and at the chamber desk.
+  code                String            @unique
+  /// ref users.PatientProfile
+  patientId           String            @db.Uuid
+  /// ref auth.User
+  bookedByUserId      String            @db.Uuid
+  /// ref providers.Provider
+  providerId          String            @db.Uuid
+  /// ref providers.Chamber; null if online
+  chamberId           String?           @db.Uuid
+  /// ref providers.Schedule
+  scheduleId          String            @db.Uuid
+  mode                AppointmentMode
+  kind                AppointmentKind   @default(NEW)
+  parentAppointmentId String?           @db.Uuid
+  /// Asia/Dhaka calendar date of the session.
+  sessionDate         DateTime          @db.Date
+  /// Time slot start; IN_PERSON = session start.
+  scheduledAt         DateTime          @db.Timestamptz(3)
+  durationMin         Int               @db.SmallInt
+  /// IN_PERSON only.
+  serialNo            Int?              @db.SmallInt
+  status              AppointmentStatus @default(PENDING_PAYMENT)
+  /// PENDING_PAYMENT only.
+  holdExpiresAt       DateTime?         @db.Timestamptz(3)
+  confirmedAt         DateTime?         @db.Timestamptz(3)
+  /// Why the patient comes (shown to the provider). Not health-record data, kept short.
+  reason              String?
+  homeAddress         String?
+  lat                 Decimal?          @db.Decimal(9, 6)
+  lng                 Decimal?          @db.Decimal(9, 6)
+  fee                 Decimal           @db.Decimal(10, 2)
+  cancelledBy         AppointmentActor?
+  cancelReason        String?
+  cancelledAt         DateTime?         @db.Timestamptz(3)
+  createdAt           DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime          @updatedAt @db.Timestamptz(3)
+
+  parent    Appointment?           @relation("FollowUpOf", fields: [parentAppointmentId], references: [id], onDelete: SetNull)
+  followUps Appointment[]          @relation("FollowUpOf")
+  history   AppointmentStatusLog[]
+  reminders FollowUpReminder[]
+
+  @@index([patientId, scheduledAt(sort: Desc)])
+  @@index([providerId, sessionDate])
+  @@index([status, holdExpiresAt])
+  @@schema("appointments")
+}
+
+model AppointmentStatusLog {
+  id              String             @id @default(uuid(7)) @db.Uuid
+  appointmentId   String             @db.Uuid
+  fromStatus      AppointmentStatus?
+  toStatus        AppointmentStatus
+  /// ref auth.User; null = system
+  changedByUserId String?            @db.Uuid
+  changedAt       DateTime           @default(now()) @db.Timestamptz(3)
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  @@index([appointmentId, changedAt])
+  @@schema("appointments")
+}
+
+/// "Come back in 14 days": set by the doctor after a visit, or added by the patient
+/// for a doctor outside the app. Reminded 24 h and 2 h before dueAt.
+model FollowUpReminder {
+  id              String         @id @default(uuid(7)) @db.Uuid
+  /// ref users.PatientProfile
+  patientId       String         @db.Uuid
+  /// ref auth.User
+  createdByUserId String         @db.Uuid
+  /// null if external
+  appointmentId   String?        @db.Uuid
+  /// ref providers.Provider; null if external
+  providerId      String?        @db.Uuid
+  doctorName      String
+  location        String?
+  mode            FollowUpMode   @default(IN_PERSON)
+  dueAt           DateTime       @db.Timestamptz(3)
+  status          FollowUpStatus @default(UPCOMING)
+  note            String?
+  createdAt       DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime       @updatedAt @db.Timestamptz(3)
+
+  appointment Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+
+  @@index([patientId, status, dueAt])
+  @@schema("appointments")
+}

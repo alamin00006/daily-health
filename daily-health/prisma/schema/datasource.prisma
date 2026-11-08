@@ -1,0 +1,25 @@
+// Generator + datasource config. Models live in one file per module next to this file
+// (e.g. auth.prisma, users.prisma), and each model is pinned to its module's
+// Postgres schema with @@schema("..."). See ../../../erd.md for the tables.
+//
+// Rules (CLAUDE.md §4):
+// - Real relations (FKs) only between models in the same @@schema.
+// - Cross-module ids are plain `String @db.Uuid` columns, commented `ref <Module>.<Table>`.
+// - Times are `DateTime @db.Timestamptz(3)`, money is `Decimal @db.Decimal(10, 2)`.
+// - Encrypted (`enc`) columns are `Bytes` (AES-256-GCM via core/crypto).
+
+generator client {
+  provider               = "prisma-client"
+  output                 = "../../src/generated/prisma"
+  moduleFormat           = "esm"
+  generatedFileExtension = "ts"
+  importFileExtension    = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+  // One Postgres schema per NestJS module. `public` is intentionally left out:
+  // it holds only the PostGIS / pg_trgm / pgcrypto extension objects, which
+  // Prisma must not manage. `core` holds infrastructure tables (readable ID counters).
+  schemas  = ["core", "auth", "users", "health", "records", "providers", "appointments", "consultation", "chat", "prescriptions", "medicine", "nutrition", "womens_health", "community", "payments", "notifications", "emergency", "content", "admin"]
+}

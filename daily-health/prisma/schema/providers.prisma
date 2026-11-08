@@ -1,0 +1,294 @@
+// modules/doctors: doctors, nutritionists and physiotherapists, where and when they
+// see patients, verification, reviews and patients' "my doctors"
+// (erd.md → "ডাক্তার ও সেবাদাতা"). User and patient ids are plain uuids
+// (`ref auth.User`, `ref users.PatientProfile`).
+
+enum ProviderType {
+  DOCTOR
+  NUTRITIONIST
+  PHYSIO
+
+  @@schema("providers")
+}
+
+enum ProviderGender {
+  MALE
+  FEMALE
+
+  @@schema("providers")
+}
+
+enum ProviderVerificationStatus {
+  /// Profile filled in, waiting for an admin to check the documents.
+  PENDING
+  VERIFIED
+  REJECTED
+
+  @@schema("providers")
+}
+
+/// How a patient meets the provider. Shared with appointments.Appointment.mode.
+enum ConsultationMode {
+  IN_PERSON
+  VIDEO
+  CHAT
+  HOME_VISIT
+
+  @@schema("providers")
+}
+
+enum VerificationDocType {
+  BMDC_CERT
+  NID
+  DEGREE
+  OTHER
+
+  @@schema("providers")
+}
+
+enum VerificationDocStatus {
+  PENDING
+  APPROVED
+  REJECTED
+
+  @@schema("providers")
+}
+
+enum ReviewStatus {
+  VISIBLE
+  HIDDEN
+
+  @@schema("providers")
+}
+
+/// Shown to patients only when VERIFIED. One per user account.
+model Provider {
+  id                  String                     @id @default(uuid(7)) @db.Uuid
+  /// ref auth.User
+  userId              String                     @unique @db.Uuid
+  /// "DR-2611-0003" (D doctor, N nutritionist, T physio); shown to people instead of the uuid.
+  providerCode        String                     @unique
+  type                ProviderType
+  gender              ProviderGender
+  /// Without "ডা." — the app adds the title.
+  displayName         String
+  /// "সহযোগী অধ্যাপক, মেডিসিন বিভাগ"
+  designation         String?
+  /// "MBBS, FCPS (Medicine)"
+  qualifications      String
+  /// Doctors only, normalised "A-12345" (CHECK in the migration).
+  bmdcNo              String?                    @unique
+  verificationStatus  ProviderVerificationStatus @default(PENDING)
+  /// Why an admin rejected the profile (shown to the provider).
+  rejectionReason     String?
+  verifiedAt          DateTime?                  @db.Timestamptz(3)
+  /// ref auth.User (the admin)
+  verifiedByUserId    String?                    @db.Uuid
+  experienceYears     Int                        @default(0) @db.SmallInt
+  bio                 String?
+  /// Public WebP with thumbnails.
+  avatarStorageKey    String?
+  videoFee            Decimal?                   @db.Decimal(10, 2)
+  chatFee             Decimal?                   @db.Decimal(10, 2)
+  homeVisitFee        Decimal?                   @db.Decimal(10, 2)
+  /// Joins the ৳10 chat queue (step 7).
+  acceptsQuickConsult Boolean                    @default(false)
+  offersHomeVisit     Boolean                    @default(false)
+  ratingAvg           Decimal                    @default(0) @db.Decimal(3, 2)
+  ratingCount         Int                        @default(0)
+  isOnline            Boolean                    @default(false)
+  lastOnlineAt        DateTime?                  @db.Timestamptz(3)
+  createdAt           DateTime                   @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime                   @updatedAt @db.Timestamptz(3)
+
+  specialties ProviderSpecialty[]
+  chambers    Chamber[]
+  schedules   Schedule[]
+  exceptions  ScheduleException[]
+  documents   VerificationDocument[]
+  reviews     Review[]
+  favoritedBy FavoriteProvider[]
+
+  @@index([verificationStatus, type])
+  // displayName trigram index for fuzzy search ("রহমান" / "rahman").
+  @@index([displayName(ops: raw("gin_trgm_ops"))], type: Gin, map: "Provider_displayName_trgm_idx")
+  @@schema("providers")
+}
+
+model Specialty {
+  id        String       @id @default(uuid(7)) @db.Uuid
+  /// "cardiology"
+  slug      String       @unique
+  nameBn    String
+  nameEn    String
+  /// Icon name in the apps, not a file.
+  iconName  String
+  /// Which provider type lists it (nutrition specialties are for nutritionists).
+  forType   ProviderType @default(DOCTOR)
+  sortOrder Int          @default(0) @db.SmallInt
+  createdAt DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime     @updatedAt @db.Timestamptz(3)
+
+  providers ProviderSpecialty[]
+
+  @@schema("providers")
+}
+
+model ProviderSpecialty {
+  providerId  String @db.Uuid
+  specialtyId String @db.Uuid
+
+  provider  Provider  @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  specialty Specialty @relation(fields: [specialtyId], references: [id], onDelete: Cascade)
+
+  @@id([providerId, specialtyId])
+  @@index([specialtyId])
+  @@schema("providers")
+}
+
+/// A hospital or diagnostic centre where chambers are. Shared by providers.
+model Hospital {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  name      String
+  address   String
+  district  String
+  lat       Decimal? @db.Decimal(9, 6)
+  lng       Decimal? @db.Decimal(9, 6)
+  /// E.164 front-desk number.
+  phone     String?
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  chambers Chamber[]
+
+  @@unique([name, district])
+  @@index([name(ops: raw("gin_trgm_ops"))], type: Gin, map: "Hospital_name_trgm_idx")
+  @@schema("providers")
+}
+
+/// Where a provider sits, with the fee for a visit there.
+model Chamber {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  providerId  String   @db.Uuid
+  hospitalId  String   @db.Uuid
+  /// "OPD-3, ৪র্থ তলা"
+  room        String?
+  fee         Decimal  @db.Decimal(10, 2)
+  /// Reduced fee for a follow-up visit, if any.
+  followUpFee Decimal? @db.Decimal(10, 2)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+
+  provider  Provider   @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  hospital  Hospital   @relation(fields: [hospitalId], references: [id])
+  schedules Schedule[]
+
+  @@index([providerId])
+  @@schema("providers")
+}
+
+/// A weekly session. IN_PERSON: serials up to maxPatients at a chamber.
+/// VIDEO / CHAT / HOME_VISIT: time slots of slotMinutes (chamberId null).
+model Schedule {
+  id          String           @id @default(uuid(7)) @db.Uuid
+  providerId  String           @db.Uuid
+  chamberId   String?          @db.Uuid
+  mode        ConsultationMode
+  /// 0 = Sunday … 6 = Saturday (Asia/Dhaka).
+  dayOfWeek   Int              @db.SmallInt
+  /// Asia/Dhaka wall-clock time.
+  startTime   DateTime         @db.Time(0)
+  endTime     DateTime         @db.Time(0)
+  /// Time-slot modes only.
+  slotMinutes Int?             @db.SmallInt
+  /// IN_PERSON only: serial cap.
+  maxPatients Int?             @db.SmallInt
+  isActive    Boolean          @default(true)
+  createdAt   DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime         @updatedAt @db.Timestamptz(3)
+
+  provider   Provider            @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  chamber    Chamber?            @relation(fields: [chamberId], references: [id], onDelete: Cascade)
+  exceptions ScheduleException[]
+
+  @@index([providerId, dayOfWeek])
+  @@schema("providers")
+}
+
+/// A day off or changed hours. scheduleId null = the whole day, every schedule.
+model ScheduleException {
+  id         String    @id @default(uuid(7)) @db.Uuid
+  providerId String    @db.Uuid
+  scheduleId String?   @db.Uuid
+  date       DateTime  @db.Date
+  /// true = no sessions; false = startTime/endTime replace the schedule's hours.
+  isOff      Boolean   @default(true)
+  startTime  DateTime? @db.Time(0)
+  endTime    DateTime? @db.Time(0)
+  /// Shown to patients ("কনফারেন্সে আছেন").
+  note       String?
+  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime  @updatedAt @db.Timestamptz(3)
+
+  provider Provider  @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  schedule Schedule? @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+
+  @@index([providerId, date])
+  @@schema("providers")
+}
+
+/// Private files an admin checks before VERIFIED.
+model VerificationDocument {
+  id               String                @id @default(uuid(7)) @db.Uuid
+  providerId       String                @db.Uuid
+  docType          VerificationDocType
+  storageKey       String
+  mimeType         String
+  status           VerificationDocStatus @default(PENDING)
+  /// ref auth.User
+  reviewedByUserId String?               @db.Uuid
+  reviewedAt       DateTime?             @db.Timestamptz(3)
+  createdAt        DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime              @updatedAt @db.Timestamptz(3)
+
+  provider Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@index([providerId])
+  @@schema("providers")
+}
+
+/// One review per completed appointment.
+model Review {
+  id            String       @id @default(uuid(7)) @db.Uuid
+  providerId    String       @db.Uuid
+  /// ref users.PatientProfile
+  patientId     String       @db.Uuid
+  /// ref auth.User (who wrote it)
+  authorUserId  String       @db.Uuid
+  /// ref appointments.Appointment
+  appointmentId String       @unique @db.Uuid
+  rating        Int          @db.SmallInt
+  comment       String?
+  status        ReviewStatus @default(VISIBLE)
+  createdAt     DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime     @updatedAt @db.Timestamptz(3)
+
+  provider Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@index([providerId, status, createdAt(sort: Desc)])
+  @@schema("providers")
+}
+
+/// A patient's "my doctors" list.
+model FavoriteProvider {
+  /// ref users.PatientProfile
+  patientId  String   @db.Uuid
+  providerId String   @db.Uuid
+  addedAt    DateTime @default(now()) @db.Timestamptz(3)
+
+  provider Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@id([patientId, providerId])
+  @@schema("providers")
+}

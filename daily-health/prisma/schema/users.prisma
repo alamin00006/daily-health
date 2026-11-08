@@ -1,0 +1,126 @@
+// modules/users: patient profiles and who can access them (erd.md → "অথ ও ইউজার").
+// User ids are plain uuids here (`ref auth.User`): no FK across module schemas.
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+
+  @@schema("users")
+}
+
+enum BloodGroup {
+  A_POS
+  A_NEG
+  B_POS
+  B_NEG
+  AB_POS
+  AB_NEG
+  O_POS
+  O_NEG
+
+  @@schema("users")
+}
+
+enum ProfileRole {
+  OWNER
+  CAREGIVER
+  VIEWER
+
+  @@schema("users")
+}
+
+/// What the profile's patient is to the member ("this profile is my FATHER").
+/// SELF = the member is the patient.
+enum ProfileRelation {
+  SELF
+  FATHER
+  MOTHER
+  CHILD
+  SPOUSE
+  OTHER
+
+  @@schema("users")
+}
+
+enum ProfileInviteStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  REVOKED
+  EXPIRED
+
+  @@schema("users")
+}
+
+/// All health data belongs to a PatientProfile, never to a User.
+model PatientProfile {
+  id               String      @id @default(uuid(7)) @db.Uuid
+  /// Human-readable ID shown to people (`PR-2611-0042`, readable-id.contract.ts); the uuid is never shown. CHECK on the format.
+  patientCode      String      @unique
+  /// ref auth.User: the patient's own account, if they have one. One own profile per user.
+  linkedUserId     String?     @unique @db.Uuid
+  fullName         String
+  gender           Gender
+  dateOfBirth      DateTime?   @db.Date
+  bloodGroup       BloodGroup?
+  heightCm         Decimal?    @db.Decimal(5, 1)
+  district         String?
+  avatarStorageKey String?
+  /// ref auth.User
+  createdByUserId  String      @db.Uuid
+  /// Soft delete: other modules keep rows that reference this id.
+  deletedAt        DateTime?   @db.Timestamptz(3)
+  createdAt        DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime    @updatedAt @db.Timestamptz(3)
+
+  members ProfileMember[]
+  invites ProfileInvite[]
+
+  @@schema("users")
+}
+
+/// Every profile keeps at least one OWNER (checked in the service under a row lock).
+model ProfileMember {
+  profileId      String          @db.Uuid
+  /// ref auth.User
+  userId         String          @db.Uuid
+  role           ProfileRole
+  relation       ProfileRelation
+  /// Gets missed-dose and emergency alerts for this profile.
+  receivesAlerts Boolean         @default(false)
+  joinedAt       DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime        @updatedAt @db.Timestamptz(3)
+
+  profile PatientProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@id([profileId, userId])
+  @@index([userId])
+  @@schema("users")
+}
+
+/// Accepted by a logged-in user whose verified email matches `invitedEmail`.
+/// Only one PENDING invite per (profileId, invitedEmail): partial unique index in the migration.
+model ProfileInvite {
+  id               String              @id @default(uuid(7)) @db.Uuid
+  profileId        String              @db.Uuid
+  /// Lowercased.
+  invitedEmail     String
+  role             ProfileRole
+  relation         ProfileRelation
+  /// ref auth.User
+  invitedByUserId  String              @db.Uuid
+  status           ProfileInviteStatus @default(PENDING)
+  expiresAt        DateTime            @db.Timestamptz(3)
+  respondedAt      DateTime?           @db.Timestamptz(3)
+  /// ref auth.User
+  acceptedByUserId String?             @db.Uuid
+  createdAt        DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime            @updatedAt @db.Timestamptz(3)
+
+  profile PatientProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([profileId])
+  @@index([invitedEmail, status])
+  @@schema("users")
+}

@@ -1,0 +1,115 @@
+// modules/notifications: preferences, server reminders and every notification sent
+// (erd.md → "নোটিফিকেশন ও রিমাইন্ডার"). User and patient ids are plain uuids.
+
+enum ReminderKind {
+  DOSE_BACKUP
+  FOLLOW_UP
+  APPOINTMENT
+  REFILL
+  PERIOD
+
+  @@schema("notifications")
+}
+
+enum ReminderStatus {
+  SCHEDULED
+  SENT
+  CANCELLED
+  FAILED
+
+  @@schema("notifications")
+}
+
+enum NotificationChannel {
+  PUSH
+  SMS
+  IN_APP
+
+  @@schema("notifications")
+}
+
+enum NotificationStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  FAILED
+
+  @@schema("notifications")
+}
+
+/// Missing row = defaults (see NotificationPreferencesService).
+model NotificationPreference {
+  /// ref auth.User
+  userId             String    @id @db.Uuid
+  pushEnabled        Boolean   @default(true)
+  smsEnabled         Boolean   @default(true)
+  /// Local dose alarms on the phone (the app reads this).
+  alarmEnabled       Boolean   @default(true)
+  doseBackupDelayMin Int       @default(30) @db.SmallInt
+  /// Minutes before a follow-up / appointment: [1440, 120] = 24 h and 2 h.
+  followUpOffsetsMin Json      @default("[1440, 120]")
+  /// Asia/Dhaka. Pushes in this window arrive silently (no sound).
+  quietStart         DateTime? @db.Time(0)
+  quietEnd           DateTime? @db.Time(0)
+  createdAt          DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime  @updatedAt @db.Timestamptz(3)
+
+  @@schema("notifications")
+}
+
+/// A server-side reminder with its BullMQ delayed job (jobId = reminder id).
+/// One SCHEDULED reminder per (kind, refId): partial unique index in the migration.
+model ScheduledReminder {
+  id        String                @id @default(uuid(7)) @db.Uuid
+  /// ref auth.User: main recipient (handlers may add family members with receivesAlerts).
+  userId    String                @db.Uuid
+  /// ref users.PatientProfile
+  patientId String?               @db.Uuid
+  kind      ReminderKind
+  /// doseLog, appointment or plan id.
+  refId     String                @db.Uuid
+  fireAt    DateTime              @db.Timestamptz(3)
+  channels  NotificationChannel[]
+  status    ReminderStatus        @default(SCHEDULED)
+  jobId     String?
+  sentAt    DateTime?             @db.Timestamptz(3)
+  createdAt DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime              @updatedAt @db.Timestamptz(3)
+
+  notifications Notification[]
+
+  @@index([kind, refId])
+  @@index([patientId, status])
+  @@schema("notifications")
+}
+
+/// Every delivery: one row per channel per recipient. The in-app inbox shows IN_APP rows.
+model Notification {
+  id            String              @id @default(uuid(7)) @db.Uuid
+  /// ref auth.User
+  userId        String              @db.Uuid
+  /// ref users.PatientProfile: whose care this is about (for the family member's inbox).
+  patientId     String?             @db.Uuid
+  reminderId    String?             @db.Uuid
+  channel       NotificationChannel
+  /// "dose.missed", "medicine.refill"
+  type          String
+  title         String
+  body          String
+  /// Deep link for the app, e.g. { "screen": "medicine", "profileId": "…" }.
+  data          Json?
+  status        NotificationStatus  @default(QUEUED)
+  /// Why a delivery failed (provider error code, "NO_PUSH_TOKEN"); never message content.
+  failureReason String?
+  providerMsgId String?
+  sentAt        DateTime?           @db.Timestamptz(3)
+  readAt        DateTime?           @db.Timestamptz(3)
+  createdAt     DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime            @updatedAt @db.Timestamptz(3)
+
+  reminder ScheduledReminder? @relation(fields: [reminderId], references: [id], onDelete: SetNull)
+
+  @@index([userId, readAt])
+  @@index([userId, channel, createdAt])
+  @@schema("notifications")
+}

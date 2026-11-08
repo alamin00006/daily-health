@@ -1,0 +1,59 @@
+// modules/records: lab reports, prescription scans and other medical files
+// (erd.md → "স্বাস্থ্য প্রোফাইল ও রেকর্ড"). Files live in private storage; the DB
+// keeps only the storageKey (CLAUDE.md §5). Ids from other modules are plain uuids.
+
+enum MedicalFileType {
+  LAB_REPORT
+  PRESCRIPTION_SCAN
+  IMAGING
+  OTHER
+
+  @@schema("records")
+}
+
+/// Images are stored as WebP with 200px and 800px thumbnails (keys derived from storageKey);
+/// PDFs are stored as uploaded.
+model MedicalFile {
+  id               String          @id @default(uuid(7)) @db.Uuid
+  /// ref users.PatientProfile
+  patientId        String          @db.Uuid
+  type             MedicalFileType
+  /// enc: records.MedicalFile.title
+  title            Bytes
+  storageKey       String
+  /// Of the stored file: image/webp or application/pdf.
+  mimeType         String
+  sizeBytes        Int
+  /// Date on the report itself (Asia/Dhaka calendar), not the upload date.
+  reportDate       DateTime?       @db.Date
+  /// ref auth.User
+  uploadedByUserId String          @db.Uuid
+  /// Soft delete: the stored files are removed, the row stays for the audit trail.
+  deletedAt        DateTime?       @db.Timestamptz(3)
+  createdAt        DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime        @updatedAt @db.Timestamptz(3)
+
+  shares MedicalFileShare[]
+
+  @@index([patientId, createdAt])
+  @@schema("records")
+}
+
+/// Time-limited access for a doctor (managed with the doctors + appointments modules).
+model MedicalFileShare {
+  id            String   @id @default(uuid(7)) @db.Uuid
+  fileId        String   @db.Uuid
+  /// ref providers.Provider
+  providerId    String   @db.Uuid
+  /// ref appointments.Appointment
+  appointmentId String?  @db.Uuid
+  expiresAt     DateTime @db.Timestamptz(3)
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(3)
+
+  file MedicalFile @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@index([fileId])
+  @@index([providerId, expiresAt])
+  @@schema("records")
+}

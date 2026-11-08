@@ -1,0 +1,67 @@
+{
+  "expo": {
+    "name": "দৈনিক স্বাস্থ্য",
+    "slug": "daily-health",
+    "version": "1.0.0",
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "experiments": {
+      "tsconfigPaths": true,
+      "typedRoutes": false
+    },
+    "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash.png",
+          "imageWidth": 112,
+          "backgroundColor": "#f4f9f7"
+        }
+      ],
+      "expo-router",
+      "expo-secure-store",
+      "expo-font",
+      "expo-image",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#0f5c5a"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "রিপোর্ট, প্রেসক্রিপশন আর প্রোফাইল ছবি যোগ করতে আপনার ছবিগুলো দেখার অনুমতি দরকার।",
+          "cameraPermission": "রিপোর্ট বা প্রেসক্রিপশনের ছবি তুলতে ক্যামেরার অনুমতি দরকার।",
+          "microphonePermission": false
+        }
+      ],
+      "expo-sqlite",
+      "@react-native-community/datetimepicker",
+      "expo-web-browser"
+    ],
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.dailyhealth.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0f5c5a"
+      },
+      "package": "com.dailyhealth.app",
+      "permissions": [
+        "android.permission.SCHEDULE_EXACT_ALARM"
+      ]
+    },
+    "scheme": "dailyhealth"
+  }
+}

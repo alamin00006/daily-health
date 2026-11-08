@@ -1,0 +1,132 @@
+// modules/auth: accounts, OTP, devices and sessions (erd.md → "অথ ও ইউজার").
+// Login is email + 6-digit PIN for now; phone (SMS OTP) is added later.
+
+enum UserRole {
+  PATIENT
+  DOCTOR
+  NUTRITIONIST
+  PHYSIO
+  MODERATOR
+  ADMIN
+
+  @@schema("auth")
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+
+  @@schema("auth")
+}
+
+enum OtpChannel {
+  EMAIL
+  SMS
+
+  @@schema("auth")
+}
+
+enum OtpPurpose {
+  SIGNUP
+  LOGIN
+  RESET_PIN
+
+  @@schema("auth")
+}
+
+enum DevicePlatform {
+  ANDROID
+  IOS
+  WEB
+
+  @@schema("auth")
+}
+
+/// Guests have no email and no PIN (CHECK constraint in the migration).
+model User {
+  id                String     @id @default(uuid(7)) @db.Uuid
+  /// Lowercased. Unique when set; null for guests.
+  email             String?    @unique
+  emailVerifiedAt   DateTime?  @db.Timestamptz(3)
+  /// E.164 (+8801XXXXXXXXX). Unique when set. Not collected until SMS OTP launches.
+  phone             String?    @unique
+  /// argon2id hash of the 6-digit PIN; null for guests.
+  pinHash           String?
+  role              UserRole   @default(PATIENT)
+  status            UserStatus @default(ACTIVE)
+  isGuest           Boolean    @default(false)
+  /// Wrong PINs in a row; reset on success. Locks login at the limit.
+  failedPinAttempts Int        @default(0)
+  pinLockedUntil    DateTime?  @db.Timestamptz(3)
+  lastLoginAt       DateTime?  @db.Timestamptz(3)
+  createdAt         DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime   @updatedAt @db.Timestamptz(3)
+
+  devices  Device[]
+  sessions Session[]
+
+  @@schema("auth")
+}
+
+/// One row per code sent. Codes are stored as an HMAC, never in plain text.
+model OtpCode {
+  id          String     @id @default(uuid(7)) @db.Uuid
+  channel     OtpChannel
+  /// Lowercased email, or E.164 phone for SMS.
+  destination String
+  purpose     OtpPurpose
+  codeHash    String
+  attempts    Int        @default(0)
+  expiresAt   DateTime   @db.Timestamptz(3)
+  /// Set when the code is verified (or replaced by a newer code).
+  usedAt      DateTime?  @db.Timestamptz(3)
+  /// Set when the verification token issued for this code is spent (single use).
+  consumedAt  DateTime?  @db.Timestamptz(3)
+  createdAt   DateTime   @default(now()) @db.Timestamptz(3)
+
+  @@index([destination, purpose, createdAt])
+  @@schema("auth")
+}
+
+model Device {
+  id             String         @id @default(uuid(7)) @db.Uuid
+  userId         String         @db.Uuid
+  /// Random id the app generates once per install and keeps in secure storage.
+  installationId String
+  platform       DevicePlatform
+  /// Expo push token.
+  pushToken      String?
+  appVersion     String?
+  lastSeenAt     DateTime       @default(now()) @db.Timestamptz(3)
+  createdAt      DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime       @updatedAt @db.Timestamptz(3)
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessions Session[]
+
+  @@unique([userId, installationId])
+  @@schema("auth")
+}
+
+/// A refresh-token family. The token is rotated on every refresh; reusing an
+/// old token revokes the session (likely theft).
+model Session {
+  id               String    @id @default(uuid(7)) @db.Uuid
+  userId           String    @db.Uuid
+  deviceId         String    @db.Uuid
+  /// SHA-256 of the current refresh token secret.
+  refreshTokenHash String
+  expiresAt        DateTime  @db.Timestamptz(3)
+  revokedAt        DateTime? @db.Timestamptz(3)
+  lastUsedAt       DateTime  @default(now()) @db.Timestamptz(3)
+  createdAt        DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime  @updatedAt @db.Timestamptz(3)
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([deviceId])
+  @@schema("auth")
+}

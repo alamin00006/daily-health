@@ -1,0 +1,20 @@
+/** Error codes of the auth module. The app maps each to Bangla text; never rename. */
+export const AuthErrorCode = {
+  /** Missing, malformed or revoked access token. */
+  UNAUTHORIZED: 'UNAUTHORIZED',
+  /** Access token expired: call POST /api/v1/auth/refresh. */
+  ACCESS_TOKEN_EXPIRED: 'ACCESS_TOKEN_EXPIRED',
+  REFRESH_TOKEN_INVALID: 'REFRESH_TOKEN_INVALID',
+  OTP_INVALID: 'OTP_INVALID',
+  OTP_EXPIRED: 'OTP_EXPIRED',
+  OTP_TOO_MANY_ATTEMPTS: 'OTP_TOO_MANY_ATTEMPTS',
+  OTP_RESEND_TOO_SOON: 'OTP_RESEND_TOO_SOON',
+  OTP_SEND_LIMIT_REACHED: 'OTP_SEND_LIMIT_REACHED',
+  VERIFICATION_TOKEN_INVALID: 'VERIFICATION_TOKEN_INVALID',
+  EMAIL_ALREADY_REGISTERED: 'EMAIL_ALREADY_REGISTERED',
+  /** Wrong email or PIN (deliberately not saying which). */
+  INVALID_CREDENTIALS: 'INVALID_CREDENTIALS',
+  PIN_LOCKED: 'PIN_LOCKED',
+  ACCOUNT_SUSPENDED: 'ACCOUNT_SUSPENDED',
+  GUEST_NOT_ALLOWED: 'GUEST_NOT_ALLOWED',
+} as const;
