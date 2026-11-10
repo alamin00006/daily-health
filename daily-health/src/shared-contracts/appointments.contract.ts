@@ -145,6 +145,15 @@ export interface AppointmentPaymentInfo {
   amount: number;
   /** PENDING_PAYMENT: pay before this. */
   payBefore: string | null;
+  /** Once paid: the receipt. */
+  paymentId: string | null;
+  /** "RC-2611-0042" */
+  invoiceNo: string | null;
+  /** BKASH, NAGAD, CARD… */
+  method: string | null;
+  paidAt: string | null;
+  /** After a cancellation of a paid booking. */
+  refund: { amount: number; status: 'REQUESTED' | 'PROCESSED' | 'FAILED' } | null;
 }
 
 export interface AppointmentResponse {

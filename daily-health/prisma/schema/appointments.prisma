@@ -80,6 +80,8 @@ model Appointment {
   sessionDate         DateTime          @db.Date
   /// Time slot start; IN_PERSON = session start.
   scheduledAt         DateTime          @db.Timestamptz(3)
+  /// IN_PERSON: when the session ends; slot modes: scheduledAt + durationMin.
+  sessionEndAt        DateTime          @db.Timestamptz(3)
   durationMin         Int               @db.SmallInt
   /// IN_PERSON only.
   serialNo            Int?              @db.SmallInt

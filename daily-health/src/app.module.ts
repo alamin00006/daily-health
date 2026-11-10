@@ -2,6 +2,11 @@ import { Module } from '@nestjs/common';
 import { createObserveModule } from '@nestjs/observe';
 import { CoreModule } from './core/core.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
+import { AppointmentsModule } from './modules/appointments/appointments.module.js';
+import { PaymentsModule } from './modules/payments/payments.module.js';
+import { ChatModule } from './modules/chat/chat.module.js';
+import { ConsultationModule } from './modules/consultation/consultation.module.js';
+import { DoctorsModule } from './modules/doctors/doctors.module.js';
 import { HealthProfileModule } from './modules/health-profile/health-profile.module.js';
 import { MedicineModule } from './modules/medicine/medicine.module.js';
 import { NotificationsModule } from './modules/notifications/notifications.module.js';
@@ -27,6 +32,11 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     RecordsModule,
     NotificationsModule,
     MedicineModule,
+    DoctorsModule,
+    AppointmentsModule,
+    PaymentsModule,
+    ChatModule,
+    ConsultationModule,
   ],
 })
 export class AppModule {}

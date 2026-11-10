@@ -32,6 +32,10 @@ import { computeVitalStatus } from '../../src/modules/health-profile/vital-statu
 import { ReadableIdService } from '../../src/core/readable-ids/readable-id.service.js';
 import { VITAL_UNITS } from '../../src/shared-contracts/health.contract.js';
 import {
+  removeDoctorsDemo,
+  seedDoctorsDemo,
+} from './seed-doctors-demo.js';
+import {
   seedDemoMedicationPlans,
   seedMedicineCatalog,
 } from './seed-medicine-demo.js';
@@ -105,6 +109,7 @@ async function removePreviousDemoData(): Promise<void> {
     select: { id: true, avatarStorageKey: true },
   });
   const profileIds = profiles.map((profile) => profile.id);
+  await removeDoctorsDemo(prisma, profileIds);
 
   const files = await prisma.medicalFile.findMany({
     where: { patientId: { in: profileIds } },
@@ -605,6 +610,15 @@ async function seed(): Promise<void> {
     ],
   });
 
+  const providerLines = await seedDoctorsDemo(prisma, readableIds, {
+    pinHash,
+    platformFeePercent: config.payments.platformFeePercent,
+    fatherId: father.id,
+    rahimProfileId: rahim.id,
+    rahimId,
+    nasrinId,
+  });
+
   const codes = await prisma.patientProfile.findMany({
     where: { id: { in: [rahim.id, nasrin.id, father.id] } },
     select: { fullName: true, patientCode: true },
@@ -620,6 +634,8 @@ async function seed(): Promise<void> {
   console.log(
     `  Father's QR card: ${config.healthCardBaseUrl}/${fatherCardToken}`,
   );
+  console.log('Providers and staff (web panel), same PIN:');
+  for (const line of providerLines) console.log(line);
 }
 
 try {

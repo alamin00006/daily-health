@@ -265,6 +265,24 @@ export class ProviderDirectoryService {
     return provider;
   }
 
+  /**
+   * Verified providers online now who take quick consults (FEMALE only when
+   * `gender` is set): who the quick-consult queue is offered to.
+   */
+  async onlineQuickConsultProviders(
+    gender: 'MALE' | 'FEMALE' | null,
+  ): Promise<Pick<Provider, 'id' | 'userId' | 'gender'>[]> {
+    return this.prisma.provider.findMany({
+      where: {
+        verificationStatus: 'VERIFIED',
+        acceptsQuickConsult: true,
+        isOnline: true,
+        ...(gender ? { gender } : {}),
+      },
+      select: { id: true, userId: true, gender: true },
+    });
+  }
+
   async findById(providerId: string): Promise<Provider | null> {
     return this.prisma.provider.findUnique({ where: { id: providerId } });
   }

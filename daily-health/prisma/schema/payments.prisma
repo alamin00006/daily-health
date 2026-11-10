@@ -1,0 +1,255 @@
+// modules/payments: payments through an aggregator (shurjoPay or SSLCommerz), refunds,
+// provider earnings and payouts (erd.md → "পেমেন্ট ও পেআউট"). User, profile, provider
+// and appointment ids are plain uuids (`ref auth.User`, `ref users.PatientProfile`, …).
+
+enum PaymentPurpose {
+  APPOINTMENT
+  QUICK_CONSULT
+  DIET_PLAN
+
+  @@schema("payments")
+}
+
+/// The aggregator that took the payment (switch with PAYMENT_GATEWAY).
+enum PaymentGatewayName {
+  SHURJOPAY
+  SSLCOMMERZ
+
+  @@schema("payments")
+}
+
+/// What the payer used inside the gateway's page.
+enum PaymentMethod {
+  BKASH
+  NAGAD
+  ROCKET
+  UPAY
+  CARD
+  OTHER
+
+  @@schema("payments")
+}
+
+enum PaymentStatus {
+  /// Checkout opened, not paid yet.
+  INITIATED
+  SUCCESS
+  FAILED
+  /// Abandoned, or replaced by a newer attempt for the same thing.
+  CANCELLED
+  REFUNDED
+  PARTIALLY_REFUNDED
+
+  @@schema("payments")
+}
+
+enum GatewayTransactionKind {
+  INITIATE
+  VERIFY
+  RETURN
+  IPN
+  REFUND
+
+  @@schema("payments")
+}
+
+enum RefundStatus {
+  /// Waiting: sent to the gateway, or for an admin (gateways without a refund API).
+  REQUESTED
+  PROCESSED
+  FAILED
+
+  @@schema("payments")
+}
+
+enum RefundRequester {
+  SYSTEM
+  ADMIN
+
+  @@schema("payments")
+}
+
+enum EarningKind {
+  EARNING
+  /// Negative: a refund taken back from the provider.
+  REFUND_ADJUSTMENT
+
+  @@schema("payments")
+}
+
+enum PayoutMethod {
+  BKASH
+  NAGAD
+  BANK
+
+  @@schema("payments")
+}
+
+enum PayoutStatus {
+  PENDING
+  PAID
+  CANCELLED
+
+  @@schema("payments")
+}
+
+/// One payment attempt. Only one INITIATED or SUCCESS payment per (purpose, referenceId):
+/// partial unique index in the migration.
+model Payment {
+  id                String             @id @default(uuid(7)) @db.Uuid
+  /// "RC-2611-0042": the receipt number shown to people.
+  invoiceNo         String             @unique
+  /// ref auth.User
+  payerUserId       String             @db.Uuid
+  /// ref users.PatientProfile (whose care it pays for)
+  patientId         String             @db.Uuid
+  purpose           PaymentPurpose
+  /// appointment or consultation id
+  referenceId       String             @db.Uuid
+  /// ref providers.Provider; who earns from it
+  providerId        String?            @db.Uuid
+  /// "ডা. ফারহানা ইসলাম, চেম্বার ১১ নভেম্বর"
+  description       String
+  amount            Decimal            @db.Decimal(10, 2)
+  currency          String             @default("BDT")
+  gateway           PaymentGatewayName
+  method            PaymentMethod?
+  status            PaymentStatus      @default(INITIATED)
+  /// The gateway's id for this checkout (shurjoPay sp_order_id, SSLCommerz sessionkey).
+  gatewayPaymentId  String?            @unique
+  /// The bank / wallet transaction id once paid.
+  gatewayTrxId      String?
+  checkoutUrl       String?
+  /// The gateway checkout stops working after this.
+  checkoutExpiresAt DateTime?          @db.Timestamptz(3)
+  paidAt            DateTime?          @db.Timestamptz(3)
+  failureReason     String?
+  refundedAmount    Decimal            @default(0) @db.Decimal(10, 2)
+  createdAt         DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime           @updatedAt @db.Timestamptz(3)
+
+  transactions GatewayTransaction[]
+  refunds      Refund[]
+  earnings     ProviderEarning[]
+
+  @@index([payerUserId, createdAt(sort: Desc)])
+  @@index([patientId, createdAt(sort: Desc)])
+  @@index([purpose, referenceId])
+  @@index([status, createdAt])
+  @@schema("payments")
+}
+
+/// Every call to and from the gateway, as it was (no secrets: tokens and passwords are stripped).
+model GatewayTransaction {
+  id               String                 @id @default(uuid(7)) @db.Uuid
+  paymentId        String                 @db.Uuid
+  kind             GatewayTransactionKind
+  gatewayPaymentId String?
+  gatewayTrxId     String?
+  /// The gateway's own status text or code.
+  status           String?
+  rawRequest       Json?
+  rawResponse      Json?
+  createdAt        DateTime               @default(now()) @db.Timestamptz(3)
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@index([paymentId, createdAt])
+  @@schema("payments")
+}
+
+model Refund {
+  id                String          @id @default(uuid(7)) @db.Uuid
+  paymentId         String          @db.Uuid
+  amount            Decimal         @db.Decimal(10, 2)
+  reason            String
+  status            RefundStatus    @default(REQUESTED)
+  requestedBy       RefundRequester
+  gatewayRefundId   String?
+  failureReason     String?
+  /// ref auth.User (admin who completed a manual refund)
+  processedByUserId String?         @db.Uuid
+  processedAt       DateTime?       @db.Timestamptz(3)
+  createdAt         DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime        @updatedAt @db.Timestamptz(3)
+
+  payment    Payment          @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  adjustment ProviderEarning?
+
+  @@index([status, createdAt])
+  @@schema("payments")
+}
+
+/// What a provider earns from a payment (EARNING), or gives back for a refund (REFUND_ADJUSTMENT,
+/// negative). Settled by a Payout; a paid Payout is never edited.
+model ProviderEarning {
+  id          String      @id @default(uuid(7)) @db.Uuid
+  /// ref providers.Provider
+  providerId  String      @db.Uuid
+  paymentId   String      @db.Uuid
+  refundId    String?     @unique @db.Uuid
+  kind        EarningKind
+  gross       Decimal     @db.Decimal(10, 2)
+  platformFee Decimal     @db.Decimal(10, 2)
+  net         Decimal     @db.Decimal(10, 2)
+  payoutId    String?     @db.Uuid
+  createdAt   DateTime    @default(now()) @db.Timestamptz(3)
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  refund  Refund? @relation(fields: [refundId], references: [id], onDelete: Restrict)
+  payout  Payout? @relation(fields: [payoutId], references: [id], onDelete: SetNull)
+
+  @@index([providerId, payoutId, createdAt])
+  @@schema("payments")
+}
+
+/// Money sent to a provider for their unsettled earnings up to periodEnd.
+model Payout {
+  id              String       @id @default(uuid(7)) @db.Uuid
+  /// "ST-2611-0003" (settlement)
+  payoutNo        String       @unique
+  /// ref providers.Provider
+  providerId      String       @db.Uuid
+  periodStart     DateTime     @db.Date
+  periodEnd       DateTime     @db.Date
+  /// Sum of the settled net amounts (refund adjustments included).
+  amount          Decimal      @db.Decimal(10, 2)
+  method          PayoutMethod
+  /// "017XXXXX123" / "XXXX4521": never the full number.
+  accountMasked   String
+  status          PayoutStatus @default(PENDING)
+  /// bKash TrxID or bank reference, entered when paid.
+  reference       String?
+  /// ref auth.User
+  createdByUserId String       @db.Uuid
+  /// ref auth.User
+  paidByUserId    String?      @db.Uuid
+  paidAt          DateTime?    @db.Timestamptz(3)
+  createdAt       DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime     @updatedAt @db.Timestamptz(3)
+
+  earnings ProviderEarning[]
+
+  @@index([providerId, createdAt(sort: Desc)])
+  @@index([status, createdAt])
+  @@schema("payments")
+}
+
+/// Where a provider wants to be paid. The account number is encrypted (core/crypto).
+model ProviderPayoutAccount {
+  /// ref providers.Provider
+  providerId         String       @id @db.Uuid
+  method             PayoutMethod
+  accountName        String
+  /// enc
+  accountNumberEnc   Bytes
+  /// Shown in lists: "4521".
+  accountNumberLast4 String
+  bankName           String?
+  branchName         String?
+  routingNumber      String?
+  createdAt          DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime     @updatedAt @db.Timestamptz(3)
+
+  @@schema("payments")
+}

@@ -89,6 +89,14 @@ const encryptionKeysSchema = z
     return keys;
   });
 
+
+/** Agora keys are 32 hex characters; an empty value (`AGORA_APP_ID=`) means "not set". */
+const optionalAgoraKey = z
+  .string()
+  .transform((value) => value.trim() || undefined)
+  .pipe(z.string().regex(/^[0-9a-f]{32}$/i, '32 hex characters').optional())
+  .optional();
+
 export const environmentVariablesSchema = z
   .object({
     APP_ENV: z.enum(APP_ENVIRONMENTS).default('development'),
@@ -156,6 +164,44 @@ export const environmentVariablesSchema = z
     REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).max(365).default(60),
     /** HMAC key for stored OTP codes, so a DB leak does not reveal live codes. */
     OTP_HASH_SECRET: z.string().min(32),
+
+    /**
+     * Payment aggregator in use (bKash, Nagad, Rocket and cards come through it).
+     * Switching is this one variable; both gateways are implemented.
+     */
+    PAYMENT_GATEWAY: z.enum(['SHURJOPAY', 'SSLCOMMERZ']).default('SHURJOPAY'),
+    /**
+     * Public base of this API as the gateways (and the phone's browser) reach
+     * it, for return and IPN URLs: https://api.example.com/api/v1.
+     */
+    PAYMENT_CALLBACK_BASE_URL: z
+      .url({ protocol: /^https?$/ })
+      .default('http://localhost:3000/api/v1'),
+    /** Where the return page sends the patient back: the app's deep link. */
+    PAYMENT_APP_RETURN_URL: z.string().min(3).default('dailyhealth://payment-result'),
+    /** Platform's share of each payment, in percent (the provider gets the rest). */
+    PLATFORM_FEE_PERCENT: z.coerce.number().min(0).max(50).default(10),
+
+    SHURJOPAY_BASE_URL: z
+      .url({ protocol: /^https$/ })
+      .default('https://sandbox.shurjopayment.com/api'),
+    SHURJOPAY_USERNAME: z.string().optional(),
+    SHURJOPAY_PASSWORD: z.string().optional(),
+    /** Order-id prefix given by shurjoPay ("sp" in the sandbox). */
+    SHURJOPAY_PREFIX: z.string().min(1).max(10).default('sp'),
+
+    SSLCOMMERZ_BASE_URL: z
+      .url({ protocol: /^https$/ })
+      .default('https://sandbox.sslcommerz.com'),
+    SSLCOMMERZ_STORE_ID: z.string().optional(),
+    SSLCOMMERZ_STORE_PASSWORD: z.string().optional(),
+
+    /** Agora video (console.agora.io → project). Without both, video calls answer VIDEO_NOT_CONFIGURED. */
+    AGORA_APP_ID: optionalAgoraKey,
+    /** Primary certificate of the same project; signs RTC tokens. Never sent to the apps. */
+    AGORA_APP_CERTIFICATE: optionalAgoraKey,
+    /** How long an RTC token works, in seconds (a call longer than this must rejoin). */
+    AGORA_TOKEN_TTL_SECONDS: z.coerce.number().int().min(600).max(86_400).default(7200),
   })
   .superRefine((env, ctx) => {
     if (Boolean(env.SMTP_USER) !== Boolean(env.SMTP_PASSWORD)) {
@@ -163,6 +209,24 @@ export const environmentVariablesSchema = z
         code: 'custom',
         path: ['SMTP_PASSWORD'],
         message: 'set both SMTP_USER and SMTP_PASSWORD, or neither',
+      });
+    }
+    const gatewayCredentials =
+      env.PAYMENT_GATEWAY === 'SHURJOPAY'
+        ? [env.SHURJOPAY_USERNAME, env.SHURJOPAY_PASSWORD]
+        : [env.SSLCOMMERZ_STORE_ID, env.SSLCOMMERZ_STORE_PASSWORD];
+    if (gatewayCredentials.some((value) => !value)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['PAYMENT_GATEWAY'],
+        message: `credentials for ${env.PAYMENT_GATEWAY} are missing`,
+      });
+    }
+    if (Boolean(env.AGORA_APP_ID) !== Boolean(env.AGORA_APP_CERTIFICATE)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['AGORA_APP_CERTIFICATE'],
+        message: 'set both AGORA_APP_ID and AGORA_APP_CERTIFICATE, or neither',
       });
     }
     if (!env.ENCRYPTION_KEYS.has(env.ENCRYPTION_ACTIVE_KEY_VERSION)) {

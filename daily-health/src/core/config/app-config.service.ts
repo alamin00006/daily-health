@@ -113,4 +113,46 @@ export class AppConfigService {
   get expoPushAccessToken(): string | undefined {
     return this.env.EXPO_PUSH_ACCESS_TOKEN;
   }
+
+  get payments(): {
+    gateway: 'SHURJOPAY' | 'SSLCOMMERZ';
+    callbackBaseUrl: string;
+    appReturnUrl: string;
+    platformFeePercent: number;
+    shurjoPay: {
+      baseUrl: string;
+      username: string;
+      password: string;
+      prefix: string;
+    };
+    sslCommerz: { baseUrl: string; storeId: string; storePassword: string };
+  } {
+    return {
+      gateway: this.env.PAYMENT_GATEWAY,
+      callbackBaseUrl: this.env.PAYMENT_CALLBACK_BASE_URL.replace(/\/+$/, ''),
+      appReturnUrl: this.env.PAYMENT_APP_RETURN_URL,
+      platformFeePercent: this.env.PLATFORM_FEE_PERCENT,
+      shurjoPay: {
+        baseUrl: this.env.SHURJOPAY_BASE_URL.replace(/\/+$/, ''),
+        username: this.env.SHURJOPAY_USERNAME ?? '',
+        password: this.env.SHURJOPAY_PASSWORD ?? '',
+        prefix: this.env.SHURJOPAY_PREFIX,
+      },
+      sslCommerz: {
+        baseUrl: this.env.SSLCOMMERZ_BASE_URL.replace(/\/+$/, ''),
+        storeId: this.env.SSLCOMMERZ_STORE_ID ?? '',
+        storePassword: this.env.SSLCOMMERZ_STORE_PASSWORD ?? '',
+      },
+    };
+  }
+
+  /** null when Agora is not configured (video calls are then unavailable). */
+  get agora(): { appId: string; appCertificate: string; tokenTtlSeconds: number } | null {
+    if (!this.env.AGORA_APP_ID || !this.env.AGORA_APP_CERTIFICATE) return null;
+    return {
+      appId: this.env.AGORA_APP_ID,
+      appCertificate: this.env.AGORA_APP_CERTIFICATE,
+      tokenTtlSeconds: this.env.AGORA_TOKEN_TTL_SECONDS,
+    };
+  }
 }

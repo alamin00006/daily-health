@@ -2,7 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { dhakaDate } from '../../common/time/dhaka-time.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import {
-  formatBookingCode,
+  formatReferenceCode,
+  type ReferenceCodeKind,
   formatReadableId,
   nameInitial,
   type ReadableIdKind,
@@ -41,16 +42,22 @@ export class ReadableIdService {
   }
 
   /** "BK-2611-0042" for an appointment (counter kind BOOKING). */
-  async nextBookingCode(
+  nextBookingCode(db: Db = this.prisma, now: Date = new Date()): Promise<string> {
+    return this.nextReference('BOOKING', db, now);
+  }
+
+  /** "PY-…" payment receipt, "PO-…" payout, "BK-…" booking. */
+  async nextReference(
+    kind: ReferenceCodeKind,
     db: Db = this.prisma,
     now: Date = new Date(),
   ): Promise<string> {
     const period = periodOf(now);
-    return formatBookingCode(period, await this.increment('BOOKING', period, db));
+    return formatReferenceCode(kind, period, await this.increment(kind, period, db));
   }
 
   private async increment(
-    kind: ReadableIdKind | 'BOOKING',
+    kind: ReadableIdKind | ReferenceCodeKind,
     period: string,
     db: Db,
   ): Promise<number> {

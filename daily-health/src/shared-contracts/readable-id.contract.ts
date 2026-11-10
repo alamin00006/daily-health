@@ -152,12 +152,28 @@ export const patientCodeSchema = readableIdSchema.refine(
 );
 
 /**
- * Booking reference shown on an appointment and at the chamber desk:
- * `BK-2611-0042` (YYMM in Asia/Dhaka + that month's serial). No name letter,
- * and `B` is not a person prefix, so it never looks like a person's ID.
+ * References that are not people, without a name letter: `BK-2611-0042`
+ * booking, `RC-2611-0042` payment receipt, `ST-2611-0042` provider payout
+ * (settlement), `RX-2611-0042` prescription. YYMM in Asia/Dhaka + that month's serial. B, R and S are not
+ * person prefixes (P/D/N/T/M/A), so a reference never looks like someone's ID
+ * ("PY-…" would: a patient named Yasmin).
  */
-export const BOOKING_CODE_PATTERN = /^BK-\d{4}-\d{4,}$/;
+export const REFERENCE_CODE_PREFIX = {
+  BOOKING: 'BK',
+  PAYMENT: 'RC',
+  PAYOUT: 'ST',
+  PRESCRIPTION: 'RX',
+} as const;
+export type ReferenceCodeKind = keyof typeof REFERENCE_CODE_PREFIX;
 
-export function formatBookingCode(period: string, serial: number): string {
-  return `BK-${period}-${String(serial).padStart(4, '0')}`;
+export const BOOKING_CODE_PATTERN = /^BK-\d{4}-\d{4,}$/;
+export const PAYMENT_INVOICE_PATTERN = /^RC-\d{4}-\d{4,}$/;
+export const PRESCRIPTION_CODE_PATTERN = /^RX-\d{4}-\d{4,}$/;
+
+export function formatReferenceCode(
+  kind: ReferenceCodeKind,
+  period: string,
+  serial: number,
+): string {
+  return `${REFERENCE_CODE_PREFIX[kind]}-${period}-${String(serial).padStart(4, '0')}`;
 }

@@ -72,6 +72,8 @@ export class MedicationPlansService {
     userId: string,
     access: ProfileAccess,
     input: CreateMedicationPlanRequest,
+    /** Set when made from a prescription line (prescriptions module). */
+    prescriptionItemId: string | null = null,
   ): Promise<MedicationPlanResponse> {
     if (
       input.medicineId &&
@@ -88,6 +90,7 @@ export class MedicationPlansService {
       data: {
         patientId: access.profile.id,
         medicineId: input.medicineId ?? null,
+        prescriptionItemId,
         displayName: input.displayName,
         doseUnit: input.doseUnit,
         mealTiming: input.mealTiming,
@@ -107,6 +110,26 @@ export class MedicationPlansService {
     await this.reminders.checkRefill(plan.id);
     this.audit(userId, access, 'medicine.plan.create', plan.id);
     return toPlanResponse(plan);
+  }
+
+  /** Alarms already made from these prescription lines (newest per line). */
+  async plansForPrescriptionItems(
+    patientId: string,
+    itemIds: string[],
+  ): Promise<Map<string, { planId: string; isActive: boolean }>> {
+    if (itemIds.length === 0) return new Map();
+    const rows = await this.prisma.medicationPlan.findMany({
+      where: { patientId, prescriptionItemId: { in: [...new Set(itemIds)] } },
+      select: { id: true, prescriptionItemId: true, isActive: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    return new Map(
+      rows.flatMap((row) =>
+        row.prescriptionItemId
+          ? [[row.prescriptionItemId, { planId: row.id, isActive: row.isActive }] as const]
+          : [],
+      ),
+    );
   }
 
   /** Active medicines first (by name); stopped ones only when asked. */

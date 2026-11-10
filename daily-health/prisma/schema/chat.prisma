@@ -1,0 +1,90 @@
+// modules/chat: conversations and messages (erd.md → "পরামর্শ ও বার্তা").
+// User, patient and consultation ids are plain uuids. `body` and
+// `attachmentStorageKey` are encrypted (AES-256-GCM, core/crypto).
+
+enum ConversationType {
+  CONSULTATION
+  SUPPORT
+  CARE_TEAM
+
+  @@schema("chat")
+}
+
+enum ChatParticipantRole {
+  PATIENT
+  PROVIDER
+  AGENT
+  CAREGIVER
+
+  @@schema("chat")
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  FILE
+  SYSTEM
+  PRESCRIPTION
+
+  @@schema("chat")
+}
+
+model Conversation {
+  id             String           @id @default(uuid(7)) @db.Uuid
+  type           ConversationType
+  /// ref consultation.Consultation
+  consultationId String?          @unique @db.Uuid
+  /// ref users.PatientProfile: whose care this is (audit).
+  patientId      String?          @db.Uuid
+  /// Closed conversations are read only.
+  isOpen         Boolean          @default(true)
+  closedAt       DateTime?        @db.Timestamptz(3)
+  lastMessageAt  DateTime?        @db.Timestamptz(3)
+  createdAt      DateTime         @default(now()) @db.Timestamptz(3)
+
+  participants ConversationParticipant[]
+  messages     Message[]
+
+  @@schema("chat")
+}
+
+model ConversationParticipant {
+  conversationId String              @db.Uuid
+  /// ref auth.User
+  userId         String              @db.Uuid
+  role           ChatParticipantRole
+  lastReadAt     DateTime?           @db.Timestamptz(3)
+  muted          Boolean             @default(false)
+  joinedAt       DateTime            @default(now()) @db.Timestamptz(3)
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@id([conversationId, userId])
+  @@index([userId])
+  @@schema("chat")
+}
+
+model Message {
+  id                   String      @id @default(uuid(7)) @db.Uuid
+  conversationId       String      @db.Uuid
+  /// ref auth.User; null for SYSTEM messages.
+  senderId             String?     @db.Uuid
+  type                 MessageType
+  /// enc
+  body                 Bytes?
+  /// enc: private storage key of an image or file.
+  attachmentStorageKey Bytes?
+  attachmentMimeType   String?
+  /// e.g. a prescription id (step 8).
+  refId                String?     @db.Uuid
+  /// Sender-generated; a retried send returns the first message.
+  clientMsgId          String?     @db.Uuid
+  createdAt            DateTime    @default(now()) @db.Timestamptz(3)
+  deletedAt            DateTime?   @db.Timestamptz(3)
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, clientMsgId])
+  @@index([conversationId, createdAt])
+  @@schema("chat")
+}

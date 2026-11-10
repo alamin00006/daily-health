@@ -1,0 +1,138 @@
+// modules/prescriptions: digital prescriptions (erd.md → "ডিজিটাল প্রেসক্রিপশন").
+// Patient, provider, appointment, consultation, medicine and file ids are plain
+// uuids (`ref users.PatientProfile`, `ref providers.Provider`, …). The medicine
+// alarm made from a line points back here (`MedicationPlan.prescriptionItemId`).
+// Form, dose unit and meal timing use the same values as the medicine module.
+
+enum PrescriptionStatus {
+  DRAFT
+  ISSUED
+  REVOKED
+
+  @@schema("prescriptions")
+}
+
+enum RxMedicineForm {
+  TABLET
+  CAPSULE
+  SYRUP
+  SUSPENSION
+  DROPS
+  INJECTION
+  INSULIN
+  INHALER
+  CREAM
+  OINTMENT
+  GEL
+  SUPPOSITORY
+  POWDER
+  OTHER
+
+  @@schema("prescriptions")
+}
+
+enum RxDoseUnit {
+  TABLET
+  CAPSULE
+  ML
+  SPOON
+  DROP
+  PUFF
+  UNIT
+  SACHET
+  APPLICATION
+
+  @@schema("prescriptions")
+}
+
+enum RxMealTiming {
+  BEFORE_MEAL
+  AFTER_MEAL
+  WITH_MEAL
+  ANY
+
+  @@schema("prescriptions")
+}
+
+/// Issued prescriptions never change: a mistake is REVOKED (with a reason) and written again.
+model Prescription {
+  id                String             @id @default(uuid(7)) @db.Uuid
+  /// "RX-2611-0042"; CHECK on the format.
+  code              String             @unique
+  /// ref users.PatientProfile
+  patientId         String             @db.Uuid
+  /// ref providers.Provider
+  providerId        String             @db.Uuid
+  /// ref auth.User (the doctor who wrote it)
+  providerUserId    String             @db.Uuid
+  /// ref appointments.Appointment (a visit); one of this or consultationId.
+  appointmentId     String?            @db.Uuid
+  /// ref consultation.Consultation (a quick consult or a call).
+  consultationId    String?            @db.Uuid
+  /// enc
+  chiefComplaint    Bytes?
+  /// enc
+  diagnosis         Bytes?
+  /// enc
+  advice            Bytes?
+  followUpAfterDays Int?               @db.SmallInt
+  /// From a women's health consult: only the patient themself sees it (CLAUDE.md §1).
+  isSensitive       Boolean            @default(false)
+  /// Reserved for a generated PDF (the panel prints it for now).
+  pdfStorageKey     String?
+  status            PrescriptionStatus @default(DRAFT)
+  issuedAt          DateTime?          @db.Timestamptz(3)
+  revokedAt         DateTime?          @db.Timestamptz(3)
+  revokeReason      String?
+  createdAt         DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime           @updatedAt @db.Timestamptz(3)
+
+  items PrescriptionItem[]
+  tests PrescribedTest[]
+
+  @@index([patientId, issuedAt])
+  @@index([providerId, createdAt])
+  @@index([appointmentId])
+  @@index([consultationId])
+  @@schema("prescriptions")
+}
+
+model PrescriptionItem {
+  id             String         @id @default(uuid(7)) @db.Uuid
+  prescriptionId String         @db.Uuid
+  /// Order on the prescription.
+  position       Int            @db.SmallInt
+  /// ref medicine.Medicine; null for a medicine not in the catalog.
+  medicineId     String?        @db.Uuid
+  medicineName   String
+  /// "500 mg"
+  strength       String?
+  form           RxMedicineForm
+  doseUnit       RxDoseUnit
+  /// "1+0+½": dose at each time of day, morning first.
+  dosePattern    String
+  mealTiming     RxMealTiming   @default(AFTER_MEAL)
+  /// null = continue.
+  durationDays   Int?           @db.SmallInt
+  instruction    String?
+
+  prescription Prescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+
+  @@index([prescriptionId])
+  @@schema("prescriptions")
+}
+
+model PrescribedTest {
+  id             String  @id @default(uuid(7)) @db.Uuid
+  prescriptionId String  @db.Uuid
+  position       Int     @db.SmallInt
+  testName       String
+  note           String?
+  /// ref records.MedicalFile (the uploaded report).
+  resultFileId   String? @db.Uuid
+
+  prescription Prescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+
+  @@index([prescriptionId])
+  @@schema("prescriptions")
+}

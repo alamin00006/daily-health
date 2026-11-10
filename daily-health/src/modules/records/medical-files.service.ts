@@ -102,6 +102,16 @@ export class MedicalFilesService {
     );
   }
 
+  /** Titles of this patient's (not deleted) files, for other modules (prescribed tests). */
+  async titlesByIds(patientId: string, fileIds: string[]): Promise<Map<string, string>> {
+    if (fileIds.length === 0) return new Map();
+    const rows = await this.prisma.medicalFile.findMany({
+      where: { id: { in: [...new Set(fileIds)] }, patientId, deletedAt: null },
+      select: { id: true, title: true },
+    });
+    return new Map(rows.map((row) => [row.id, this.encryption.decrypt(row.title, TITLE_CONTEXT)]));
+  }
+
   /** One file with fresh signed URLs (call again when urlsExpireAt passes). */
   async get(
     userId: string,

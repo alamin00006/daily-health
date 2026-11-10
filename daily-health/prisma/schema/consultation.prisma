@@ -1,0 +1,162 @@
+// modules/consultation: video/chat sessions and the quick-consult queue
+// (erd.md → "পরামর্শ ও বার্তা"). Appointment, patient, user and provider ids are
+// plain uuids (`ref appointments.Appointment`, `ref users.PatientProfile`,
+// `ref auth.User`, `ref providers.Provider`). The payment of a quick consult is
+// Payment(purpose = QUICK_CONSULT, referenceId = consultation.id).
+
+enum ConsultChannel {
+  VIDEO
+  AUDIO
+  CHAT
+
+  @@schema("consultation")
+}
+
+enum ConsultTier {
+  /// Pay-and-wait chat with any eligible online doctor; price from QuickConsultSetting.
+  QUICK
+  /// The session of a booked VIDEO or CHAT appointment.
+  STANDARD
+
+  @@schema("consultation")
+}
+
+enum ConsultStatus {
+  PENDING_PAYMENT
+  WAITING
+  ONGOING
+  ENDED
+  MISSED
+  CANCELLED
+  EXPIRED
+
+  @@schema("consultation")
+}
+
+enum QuickConsultKind {
+  GENERAL
+  /// Female doctors only (CLAUDE.md §4 "Quick consult").
+  WOMENS_HEALTH
+
+  @@schema("consultation")
+}
+
+enum ConsultActor {
+  PATIENT
+  PROVIDER
+  SYSTEM
+
+  @@schema("consultation")
+}
+
+enum RequiredProviderGender {
+  MALE
+  FEMALE
+
+  @@schema("consultation")
+}
+
+enum QueueEntryStatus {
+  WAITING
+  ASSIGNED
+  EXPIRED
+  CANCELLED
+
+  @@schema("consultation")
+}
+
+/// CHECK (tier <> 'QUICK' OR channel = 'CHAT') and status/tier CHECKs in the migration.
+model Consultation {
+  id                String            @id @default(uuid(7)) @db.Uuid
+  /// ref appointments.Appointment; null for a quick consult.
+  appointmentId     String?           @unique @db.Uuid
+  /// ref users.PatientProfile
+  patientId         String            @db.Uuid
+  /// ref auth.User: who booked or started it; the patient side of the chat.
+  requestedByUserId String            @db.Uuid
+  /// ref providers.Provider; null while a quick consult waits.
+  providerId        String?           @db.Uuid
+  /// ref auth.User: the provider's account (to reach them in real time).
+  providerUserId    String?           @db.Uuid
+  channel           ConsultChannel
+  tier              ConsultTier
+  quickKind         QuickConsultKind?
+  status            ConsultStatus
+  /// Copied from the appointment or the quick-consult price when created.
+  fee               Decimal           @db.Decimal(10, 2)
+  /// PENDING_PAYMENT quick consult: EXPIRED after this.
+  holdExpiresAt     DateTime?         @db.Timestamptz(3)
+  /// WAITING: MISSED (and refunded) after this.
+  waitingUntil      DateTime?         @db.Timestamptz(3)
+  /// ONGOING quick consult: ended by the system after this.
+  endsAt            DateTime?         @db.Timestamptz(3)
+  /// Agora channel name; set when the first call starts.
+  rtcChannel        String?           @unique
+  /// The provider has the call open.
+  callActive        Boolean           @default(false)
+  ringingAt         DateTime?         @db.Timestamptz(3)
+  startedAt         DateTime?         @db.Timestamptz(3)
+  endedAt           DateTime?         @db.Timestamptz(3)
+  durationSec       Int?
+  endedBy           ConsultActor?
+  createdAt         DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime          @updatedAt @db.Timestamptz(3)
+
+  queueEntry ConsultQueueEntry?
+
+  @@index([requestedByUserId, createdAt])
+  @@index([providerId, status])
+  @@index([status, waitingUntil])
+  @@schema("consultation")
+}
+
+model ConsultQueueEntry {
+  id                     String                  @id @default(uuid(7)) @db.Uuid
+  consultationId         String                  @unique @db.Uuid
+  /// ref providers.Specialty; null = any (general practice).
+  specialtyId            String?                 @db.Uuid
+  /// FEMALE for women's health; null = any.
+  requiredProviderGender RequiredProviderGender?
+  status                 QueueEntryStatus        @default(WAITING)
+  enqueuedAt             DateTime                @default(now()) @db.Timestamptz(3)
+  assignedAt             DateTime?               @db.Timestamptz(3)
+
+  consultation Consultation @relation(fields: [consultationId], references: [id], onDelete: Cascade)
+
+  @@index([status, enqueuedAt])
+  @@schema("consultation")
+}
+
+/// Admin-set price and rules per quick-consult kind (the "৳10 consult").
+model QuickConsultSetting {
+  kind            QuickConsultKind @id
+  price           Decimal          @db.Decimal(10, 2)
+  isEnabled       Boolean          @default(true)
+  maxWaitMin      Int              @db.SmallInt
+  sessionMin      Int              @db.SmallInt
+  /// ref auth.User (admin); null for the migration's default.
+  updatedByUserId String?          @db.Uuid
+  updatedAt       DateTime         @default(now()) @updatedAt @db.Timestamptz(3)
+
+  @@schema("consultation")
+}
+
+/// Append-only history of QuickConsultSetting changes.
+model QuickConsultSettingChange {
+  id              String           @id @default(uuid(7)) @db.Uuid
+  kind            QuickConsultKind
+  oldPrice        Decimal          @db.Decimal(10, 2)
+  newPrice        Decimal          @db.Decimal(10, 2)
+  oldEnabled      Boolean
+  newEnabled      Boolean
+  oldMaxWaitMin   Int              @db.SmallInt
+  newMaxWaitMin   Int              @db.SmallInt
+  oldSessionMin   Int              @db.SmallInt
+  newSessionMin   Int              @db.SmallInt
+  /// ref auth.User (admin)
+  changedByUserId String           @db.Uuid
+  changedAt       DateTime         @default(now()) @db.Timestamptz(3)
+
+  @@index([changedAt])
+  @@schema("consultation")
+}

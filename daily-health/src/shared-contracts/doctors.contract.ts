@@ -306,7 +306,7 @@ export interface MyProviderProfileResponse extends ProviderDetailResponse {
   allChambers: ChamberResponse[];
   allSchedules: ScheduleResponse[];
   /** What is still missing before it can be submitted for verification. */
-  missingForVerification: Array<'BMDC_CERT' | 'CHAMBER_OR_ONLINE_FEE'>;
+  missingForVerification: ('BMDC_CERT' | 'CHAMBER_OR_ONLINE_FEE')[];
   urlsExpireAt: string;
 }
 

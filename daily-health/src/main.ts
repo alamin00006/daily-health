@@ -6,6 +6,7 @@ import { Logger } from 'nestjs-pino';
 import { AppModule, ObserveInstrument } from './app.module.js';
 import { AppConfigService } from './core/config/app-config.service.js';
 import { configureHttpApp } from './core/http/configure-http-app.js';
+import { RealtimeIoAdapter } from './core/realtime/realtime-io.adapter.js';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
@@ -16,6 +17,7 @@ async function bootstrap() {
 
   const config = app.get(AppConfigService);
   configureHttpApp(app, config);
+  app.useWebSocketAdapter(new RealtimeIoAdapter(app, config.corsOrigins));
   await app.listen(config.port);
 }
 await bootstrap();

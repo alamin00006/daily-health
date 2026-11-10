@@ -9,6 +9,7 @@ import { LoggingModule } from './logging/logging.module.js';
 import { MailModule } from './mail/mail.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { ReadableIdsModule } from './readable-ids/readable-ids.module.js';
+import { RealtimeModule } from './realtime/realtime.module.js';
 import { QueueModule } from './queue/queue.module.js';
 import { RedisModule } from './redis/redis.module.js';
 import { StorageModule } from './storage/storage.module.js';
@@ -30,6 +31,7 @@ import { UploadsModule } from './uploads/uploads.module.js';
     ColumnEncryptionModule,
     StorageModule,
     UploadsModule,
+    RealtimeModule,
     HealthModule,
   ],
   providers: [{ provide: APP_FILTER, useClass: AllExceptionsFilter }],

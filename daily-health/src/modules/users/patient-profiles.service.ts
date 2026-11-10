@@ -250,6 +250,18 @@ export class PatientProfilesService {
    * Profiles by id for other modules (names in reviews, a provider's patient
    * list). Includes deleted ones: past bookings still need a name.
    */
+  /** Each user's own profile name (the profile linked to their account). */
+  async ownNamesByUserIds(userIds: string[]): Promise<Map<string, string>> {
+    if (userIds.length === 0) return new Map();
+    const rows = await this.prisma.patientProfile.findMany({
+      where: { linkedUserId: { in: [...new Set(userIds)] }, deletedAt: null },
+      select: { linkedUserId: true, fullName: true },
+    });
+    return new Map(
+      rows.flatMap((row) => (row.linkedUserId ? [[row.linkedUserId, row.fullName] as const] : [])),
+    );
+  }
+
   async findManyByIds(
     profileIds: string[],
   ): Promise<Map<string, PatientProfile>> {
