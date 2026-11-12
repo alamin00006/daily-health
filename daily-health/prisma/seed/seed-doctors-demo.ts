@@ -339,6 +339,10 @@ export async function removeDoctorsDemo(
     })
   ).map((c) => c.id);
   await prisma.$transaction([
+    // Items and tests go with the prescription (FK cascade).
+    prisma.prescription.deleteMany({
+      where: { OR: [{ patientId: { in: patientIds } }, { providerId: { in: providerIds } }] },
+    }),
     // Messages and participants go with the conversation; queue entries with the consultation.
     prisma.conversation.deleteMany({ where: { consultationId: { in: consultationIds } } }),
     prisma.consultation.deleteMany({ where: { id: { in: consultationIds } } }),

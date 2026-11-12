@@ -6,6 +6,7 @@ import { AppointmentsModule } from './modules/appointments/appointments.module.j
 import { PaymentsModule } from './modules/payments/payments.module.js';
 import { ChatModule } from './modules/chat/chat.module.js';
 import { ConsultationModule } from './modules/consultation/consultation.module.js';
+import { PrescriptionsModule } from './modules/prescriptions/prescriptions.module.js';
 import { DoctorsModule } from './modules/doctors/doctors.module.js';
 import { HealthProfileModule } from './modules/health-profile/health-profile.module.js';
 import { MedicineModule } from './modules/medicine/medicine.module.js';
@@ -37,6 +38,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     PaymentsModule,
     ChatModule,
     ConsultationModule,
+    PrescriptionsModule,
   ],
 })
 export class AppModule {}

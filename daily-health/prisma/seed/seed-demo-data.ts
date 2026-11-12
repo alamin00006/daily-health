@@ -619,6 +619,43 @@ async function seed(): Promise<void> {
     nasrinId,
   });
 
+  // The father's last chamber visit got a prescription (one tap → medicine alarms in the app).
+  const visit = await prisma.appointment.findFirst({
+    where: { patientId: father.id, status: 'COMPLETED' },
+    orderBy: { scheduledAt: 'desc' },
+  });
+  if (visit) {
+    const doctor = await prisma.provider.findUniqueOrThrow({ where: { id: visit.providerId } });
+    await prisma.prescription.create({
+      data: {
+        code: await readableIds.nextReference('PRESCRIPTION', prisma, visit.scheduledAt),
+        patientId: father.id,
+        providerId: doctor.id,
+        providerUserId: doctor.userId,
+        appointmentId: visit.id,
+        chiefComplaint: encryption.encrypt('মাথা ঘোরা, মাঝে মাঝে বুক ধড়ফড়', 'prescriptions.Prescription.chiefComplaint'),
+        diagnosis: encryption.encrypt('উচ্চ রক্তচাপ (নিয়ন্ত্রণে নেই)', 'prescriptions.Prescription.diagnosis'),
+        advice: encryption.encrypt('লবণ কম খাবেন। প্রতিদিন ৩০ মিনিট হাঁটবেন। প্রতি সপ্তাহে প্রেশার মেপে অ্যাপে লিখে রাখবেন।', 'prescriptions.Prescription.advice'),
+        followUpAfterDays: 30,
+        status: 'ISSUED',
+        issuedAt: visit.scheduledAt,
+        items: {
+          create: [
+            { position: 0, medicineName: 'Bisocor', strength: '5 mg', form: 'TABLET', doseUnit: 'TABLET', dosePattern: '1+0+0', mealTiming: 'AFTER_MEAL', durationDays: null, instruction: 'নিয়মিত, বন্ধ করবেন না' },
+            { position: 1, medicineName: 'Anril', strength: '25 mg', form: 'TABLET', doseUnit: 'TABLET', dosePattern: '½+0+½', mealTiming: 'AFTER_MEAL', durationDays: 30 },
+            { position: 2, medicineName: 'Pantonix', strength: '20 mg', form: 'TABLET', doseUnit: 'TABLET', dosePattern: '1+0+1', mealTiming: 'BEFORE_MEAL', durationDays: 14, instruction: 'খাবারের ৩০ মিনিট আগে' },
+          ],
+        },
+        tests: {
+          create: [
+            { position: 0, testName: 'Lipid profile', note: 'খালি পেটে' },
+            { position: 1, testName: 'Serum creatinine' },
+          ],
+        },
+      },
+    });
+  }
+
   const codes = await prisma.patientProfile.findMany({
     where: { id: { in: [rahim.id, nasrin.id, father.id] } },
     select: { fullName: true, patientCode: true },
