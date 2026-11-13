@@ -31,6 +31,16 @@ export class AppointmentLookupService {
     return row ? toFacts(row) : null;
   }
 
+  /** Confirmed or completed bookings on a Dhaka day (admin dashboard). */
+  countOnDay(date: string): Promise<number> {
+    return this.prisma.appointment.count({
+      where: {
+        sessionDate: new Date(`${date}T00:00:00.000Z`),
+        status: { in: ['CONFIRMED', 'COMPLETED'] },
+      },
+    });
+  }
+
   async findManyByIds(ids: string[]): Promise<Map<string, AppointmentFacts>> {
     if (ids.length === 0) return new Map();
     const rows = await this.prisma.appointment.findMany({

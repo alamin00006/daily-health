@@ -40,9 +40,16 @@ export class StaffRoleGuard implements CanActivate {
   }
 }
 
-/** Admin panel routes (moderators get their own routes in step 10). */
+/** Admin-only panel routes: users, staff, payouts, prices, audit log. */
 export const AdminOnly = () =>
   applyDecorators(
     SetMetadata(STAFF_ROLES_KEY, ['ADMIN'] satisfies UserRole[]),
+    UseGuards(StaffRoleGuard),
+  );
+
+/** Operational panel routes for any staff: emergency queue, health tips, moderation. */
+export const StaffOnly = () =>
+  applyDecorators(
+    SetMetadata(STAFF_ROLES_KEY, ['ADMIN', 'MODERATOR'] satisfies UserRole[]),
     UseGuards(StaffRoleGuard),
   );

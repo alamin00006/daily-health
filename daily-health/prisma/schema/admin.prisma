@@ -1,0 +1,40 @@
+// modules/admin: audit log of health-data access and staff accounts
+// (erd.md → "আকস্মিক সেবা, কনটেন্ট ও অ্যাডমিন"). User ids are plain uuids.
+
+/// Written from `audit.*` events of every module. `meta` never holds health
+/// values, names, emails or phone numbers.
+model AuditLog {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  /// ref auth.User; null for an anonymous actor (health card scan).
+  actorUserId String?  @db.Uuid
+  /// ref users.PatientProfile: whose data.
+  patientId   String   @db.Uuid
+  /// "condition.view", "womens-health.period.create"
+  action      String
+  entityType  String
+  entityId    String
+  meta        Json?
+  ip          String?
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([patientId, createdAt(sort: Desc)])
+  @@index([actorUserId, createdAt(sort: Desc)])
+  @@index([createdAt(sort: Desc)])
+  @@schema("admin")
+}
+
+/// A MODERATOR or ADMIN account: the readable staff ID (`MR-2611-0001`,
+/// `AS-2611-0001`) and the name shown in the panel. The role itself lives on
+/// auth.User so the access guard can read it.
+model StaffMember {
+  /// ref auth.User
+  userId          String   @id @db.Uuid
+  staffCode       String   @unique
+  fullName        String
+  /// ref auth.User; null for the first admin (seed / bootstrap).
+  addedByUserId   String?  @db.Uuid
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(3)
+
+  @@schema("admin")
+}

@@ -163,6 +163,8 @@ export const REFERENCE_CODE_PREFIX = {
   PAYMENT: 'RC',
   PAYOUT: 'ST',
   PRESCRIPTION: 'RX',
+  /** Emergency (SOS) requests. */
+  EMERGENCY: 'EM',
 } as const;
 export type ReferenceCodeKind = keyof typeof REFERENCE_CODE_PREFIX;
 

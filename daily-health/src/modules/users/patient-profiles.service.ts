@@ -262,6 +262,29 @@ export class PatientProfilesService {
     );
   }
 
+  /** The user's own (SELF) profile name and code, for staff lists. */
+  async ownProfilesByUserIds(userIds: string[]): Promise<Map<string, { fullName: string; patientCode: string }>> {
+    if (userIds.length === 0) return new Map();
+    const rows = await this.prisma.patientProfile.findMany({
+      where: { linkedUserId: { in: [...new Set(userIds)] }, deletedAt: null },
+      select: { linkedUserId: true, fullName: true, patientCode: true },
+    });
+    return new Map(
+      rows.flatMap((r) =>
+        r.linkedUserId ? [[r.linkedUserId, { fullName: r.fullName, patientCode: r.patientCode }] as const] : [],
+      ),
+    );
+  }
+
+  /** By readable ID (staff search); deleted profiles too, for the audit trail. */
+  findByPatientCode(patientCode: string): Promise<PatientProfile | null> {
+    return this.prisma.patientProfile.findUnique({ where: { patientCode } });
+  }
+
+  async countActive(): Promise<number> {
+    return this.prisma.patientProfile.count({ where: { deletedAt: null } });
+  }
+
   async findManyByIds(
     profileIds: string[],
   ): Promise<Map<string, PatientProfile>> {

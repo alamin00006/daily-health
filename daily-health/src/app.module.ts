@@ -7,6 +7,10 @@ import { PaymentsModule } from './modules/payments/payments.module.js';
 import { ChatModule } from './modules/chat/chat.module.js';
 import { ConsultationModule } from './modules/consultation/consultation.module.js';
 import { PrescriptionsModule } from './modules/prescriptions/prescriptions.module.js';
+import { WomensHealthModule } from './modules/womens-health/womens-health.module.js';
+import { EmergencyModule } from './modules/emergency/emergency.module.js';
+import { ContentModule } from './modules/content/content.module.js';
+import { AdminModule } from './modules/admin/admin.module.js';
 import { DoctorsModule } from './modules/doctors/doctors.module.js';
 import { HealthProfileModule } from './modules/health-profile/health-profile.module.js';
 import { MedicineModule } from './modules/medicine/medicine.module.js';
@@ -39,6 +43,10 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     ChatModule,
     ConsultationModule,
     PrescriptionsModule,
+    WomensHealthModule,
+    EmergencyModule,
+    ContentModule,
+    AdminModule,
   ],
 })
 export class AppModule {}

@@ -46,6 +46,6 @@ import { RefundsService } from './refunds.service.js';
     PaymentMaintenanceProcessor,
     StaffRoleGuard,
   ],
-  exports: [PayableRegistryService, PaymentsService],
+  exports: [PayableRegistryService, PaymentsService, RefundsService],
 })
 export class PaymentsModule {}

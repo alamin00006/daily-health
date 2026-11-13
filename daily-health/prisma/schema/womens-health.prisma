@@ -1,0 +1,77 @@
+// modules/womens-health: period tracker, daily log and pregnancy
+// (erd.md → "নারীস্বাস্থ্য ও পিরিয়ড ট্র্যাকার"). Everything except ids,
+// patientId, the dates used in queries and flags is encrypted (Bytes).
+// Predictions are computed from the logged periods, never stored.
+
+enum PregnancyStatus {
+  ACTIVE
+  ENDED
+
+  @@schema("womens_health")
+}
+
+model CycleSettings {
+  /// ref users.PatientProfile
+  patientId      String   @id @db.Uuid
+  avgCycleDays   Int      @default(28) @db.SmallInt
+  avgPeriodDays  Int      @default(5) @db.SmallInt
+  /// enc: TRACK / CONCEIVE / AVOID / PREGNANT
+  goal           Bytes?
+  /// The PIN itself stays on the phone (expo-secure-store).
+  appLockEnabled Boolean  @default(false)
+  remindersOn    Boolean  @default(true)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+
+  @@schema("womens_health")
+}
+
+model PeriodCycle {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  /// ref users.PatientProfile
+  patientId String   @db.Uuid
+  startDate DateTime @db.Date
+  /// enc: "2026-11-05"; null while it is going on.
+  endDate   Bytes?
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  @@unique([patientId, startDate])
+  @@schema("womens_health")
+}
+
+model DailyLog {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  /// ref users.PatientProfile
+  patientId String   @db.Uuid
+  date      DateTime @db.Date
+  /// enc: NONE / SPOTTING / LIGHT / MEDIUM / HEAVY
+  flow      Bytes?
+  /// enc: HAPPY / CALM / SAD / IRRITABLE / ANXIOUS
+  mood      Bytes?
+  /// enc: JSON array of symptoms
+  symptoms  Bytes?
+  /// enc
+  note      Bytes?
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  @@unique([patientId, date])
+  @@schema("womens_health")
+}
+
+model PregnancyTracking {
+  id         String          @id @default(uuid(7)) @db.Uuid
+  /// ref users.PatientProfile
+  patientId  String          @db.Uuid
+  /// ref providers.Provider (a doctor following it), optional.
+  providerId String?         @db.Uuid
+  /// enc
+  lmpDate    Bytes
+  /// enc
+  dueDate    Bytes
+  status     PregnancyStatus @default(ACTIVE)
+  createdAt  DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime        @updatedAt @db.Timestamptz(3)
+
+  @@index([patientId, status])
+  @@schema("womens_health")
+}

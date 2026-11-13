@@ -1,0 +1,66 @@
+// modules/emergency: emergency contacts and SOS requests (erd.md → "আকস্মিক
+// সেবা, কনটেন্ট ও অ্যাডমিন"). Patient and user ids are plain uuids.
+
+enum EmergencyType {
+  SOS
+  AMBULANCE
+  DOCTOR_CALL
+
+  @@schema("emergency")
+}
+
+enum EmergencyStatus {
+  OPEN
+  DISPATCHED
+  CLOSED
+  CANCELLED
+
+  @@schema("emergency")
+}
+
+model EmergencyContact {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  /// ref users.PatientProfile
+  patientId   String   @db.Uuid
+  name        String
+  /// E.164, Bangladeshi numbers only (+8801XXXXXXXXX).
+  phone       String
+  relation    String?
+  notifyOnSos Boolean  @default(true)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+
+  @@unique([patientId, phone])
+  @@schema("emergency")
+}
+
+/// One OPEN or DISPATCHED request per patient (partial unique index, raw SQL).
+model EmergencyRequest {
+  id                String          @id @default(uuid(7)) @db.Uuid
+  /// "EM-2611-0007"
+  code              String          @unique
+  /// ref users.PatientProfile
+  patientId         String          @db.Uuid
+  /// ref auth.User
+  requestedByUserId String          @db.Uuid
+  type              EmergencyType
+  lat               Decimal?        @db.Decimal(9, 6)
+  lng               Decimal?        @db.Decimal(9, 6)
+  address           String?
+  note              String?
+  status            EmergencyStatus @default(OPEN)
+  /// ref auth.User (staff)
+  handledByUserId   String?         @db.Uuid
+  handlerNote       String?
+  membersAlerted    Int             @default(0)
+  contactsNotified  Int             @default(0)
+  contactsFailed    Int             @default(0)
+  createdAt         DateTime        @default(now()) @db.Timestamptz(3)
+  dispatchedAt      DateTime?       @db.Timestamptz(3)
+  closedAt          DateTime?       @db.Timestamptz(3)
+  updatedAt         DateTime        @updatedAt @db.Timestamptz(3)
+
+  @@index([status, createdAt])
+  @@index([patientId, createdAt])
+  @@schema("emergency")
+}

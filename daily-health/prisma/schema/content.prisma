@@ -1,0 +1,39 @@
+// modules/content: health tips shown on home (erd.md → "আকস্মিক সেবা,
+// কনটেন্ট ও অ্যাডমিন"). Staff write them in the panel.
+
+enum TipCategory {
+  NUTRITION
+  WOMEN
+  CHILD
+  MENTAL
+  GENERAL
+
+  @@schema("content")
+}
+
+enum TipStatus {
+  DRAFT
+  PUBLISHED
+
+  @@schema("content")
+}
+
+model HealthTip {
+  id               String      @id @default(uuid(7)) @db.Uuid
+  title            String
+  body             String
+  /// Public WebP (storage/public), served from the CDN host.
+  imageStorageKey  String?
+  category         TipCategory @default(GENERAL)
+  /// ref providers.Provider: the doctor credited for it, optional.
+  authorProviderId String?     @db.Uuid
+  status           TipStatus   @default(DRAFT)
+  publishedAt      DateTime?   @db.Timestamptz(3)
+  /// ref auth.User (staff)
+  createdByUserId  String      @db.Uuid
+  createdAt        DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime    @updatedAt @db.Timestamptz(3)
+
+  @@index([status, publishedAt(sort: Desc)])
+  @@schema("content")
+}

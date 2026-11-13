@@ -8,7 +8,7 @@ import {
 import type { DefaultEventsMap, Server, Socket } from 'socket.io';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { RealtimeTicketsService } from './realtime-tickets.service.js';
-import { RealtimeService, userRoom } from './realtime.service.js';
+import { RealtimeService, STAFF_ROOM, userRoom } from './realtime.service.js';
 
 export interface RealtimeSocketData {
   userId?: string;
@@ -50,7 +50,7 @@ export class RealtimeGateway
     const active = userId
       ? await this.prisma.user.findFirst({
           where: { id: userId, status: 'ACTIVE' },
-          select: { id: true },
+          select: { id: true, role: true },
         })
       : null;
     if (!userId || !active) {
@@ -60,6 +60,8 @@ export class RealtimeGateway
     }
     socket.data.userId = userId;
     await socket.join(userRoom(userId));
+    // Staff also get operational events (new emergency requests).
+    if (active.role === 'ADMIN' || active.role === 'MODERATOR') await socket.join(STAFF_ROOM);
     this.realtime.markConnected(userId);
     socket.emit('realtime:ready', {});
     this.logger.debug('socket connected');

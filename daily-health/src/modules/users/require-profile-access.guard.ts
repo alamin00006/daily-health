@@ -41,9 +41,10 @@ export class ProfileAccessGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const rule = this.reflector.get<ProfileAccessRule | undefined>(
+    // A route's own rule wins over its controller's.
+    const rule = this.reflector.getAllAndOverride<ProfileAccessRule | undefined>(
       PROFILE_ACCESS_KEY,
-      context.getHandler(),
+      [context.getHandler(), context.getClass()],
     );
     if (!rule) return true;
 

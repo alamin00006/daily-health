@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import type { Server } from 'socket.io';
 
 export const userRoom = (userId: string): string => `user:${userId}`;
+/** Every connected ADMIN and MODERATOR. Role changes apply on the next connect. */
+export const STAFF_ROOM = 'staff';
 
 /**
  * Pushes events to users over Socket.io. Fire and forget: a user who is not
@@ -25,6 +27,10 @@ export class RealtimeService {
   toUsers(userIds: Iterable<string>, event: string, payload: object): void {
     const rooms = [...new Set(userIds)].map(userRoom);
     if (rooms.length > 0) this.server?.to(rooms).emit(event, payload);
+  }
+
+  toStaff(event: string, payload: object): void {
+    this.server?.to(STAFF_ROOM).emit(event, payload);
   }
 
   /** Has at least one open socket now (the app or panel is open). */

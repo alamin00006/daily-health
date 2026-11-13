@@ -30,11 +30,16 @@ import {
 import { PinHashingService } from '../../src/modules/auth/pin-hashing.service.js';
 import { computeVitalStatus } from '../../src/modules/health-profile/vital-status.js';
 import { ReadableIdService } from '../../src/core/readable-ids/readable-id.service.js';
+import { addDays, dhakaDate, stringToDateColumn } from '../../src/common/time/dhaka-time.js';
 import { VITAL_UNITS } from '../../src/shared-contracts/health.contract.js';
 import {
   removeDoctorsDemo,
   seedDoctorsDemo,
 } from './seed-doctors-demo.js';
+import {
+  removeStaffContentDemo,
+  seedStaffContentDemo,
+} from './seed-staff-content-demo.js';
 import {
   seedDemoMedicationPlans,
   seedMedicineCatalog,
@@ -109,6 +114,7 @@ async function removePreviousDemoData(): Promise<void> {
     select: { id: true, avatarStorageKey: true },
   });
   const profileIds = profiles.map((profile) => profile.id);
+  await removeStaffContentDemo(prisma, profileIds);
   await removeDoctorsDemo(prisma, profileIds);
 
   const files = await prisma.medicalFile.findMany({
@@ -144,6 +150,12 @@ async function removePreviousDemoData(): Promise<void> {
     }),
     prisma.medicalFile.deleteMany({ where: { patientId: { in: profileIds } } }),
     prisma.healthCard.deleteMany({ where: { patientId: { in: profileIds } } }),
+    prisma.cycleSettings.deleteMany({ where: { patientId: { in: profileIds } } }),
+    prisma.periodCycle.deleteMany({ where: { patientId: { in: profileIds } } }),
+    prisma.dailyLog.deleteMany({ where: { patientId: { in: profileIds } } }),
+    prisma.pregnancyTracking.deleteMany({
+      where: { patientId: { in: profileIds } },
+    }),
     prisma.medicalCondition.deleteMany({
       where: { patientId: { in: profileIds } },
     }),
@@ -416,6 +428,53 @@ async function addFile(
   });
 }
 
+/**
+ * Nasrin's period tracker: four logged periods (~29-day cycles, the last one
+ * started 9 days ago) and a few daily logs, so the cycle ring has data.
+ */
+async function addCycleHistory(patientId: string): Promise<void> {
+  const today = dhakaDate();
+  const starts = [-96, -67, -38, -9].map((offset) => addDays(today, offset));
+  const lengths = [5, 6, 5, 5];
+  await prisma.cycleSettings.create({
+    data: {
+      patientId,
+      goal: encryption.encrypt('TRACK', 'womens_health.CycleSettings.goal'),
+    },
+  });
+  for (const [i, startDate] of starts.entries()) {
+    await prisma.periodCycle.create({
+      data: {
+        patientId,
+        startDate: stringToDateColumn(startDate),
+        endDate: encryption.encrypt(
+          addDays(startDate, lengths[i] - 1),
+          'womens_health.PeriodCycle.endDate',
+        ),
+      },
+    });
+  }
+  const logs: { offset: number; flow: string | null; mood: string; symptoms: string[] }[] = [
+    { offset: -9, flow: 'HEAVY', mood: 'IRRITABLE', symptoms: ['CRAMPS', 'BACKACHE'] },
+    { offset: -8, flow: 'MEDIUM', mood: 'SAD', symptoms: ['CRAMPS', 'FATIGUE'] },
+    { offset: -6, flow: 'LIGHT', mood: 'CALM', symptoms: [] },
+    { offset: -1, flow: null, mood: 'HAPPY', symptoms: ['ACNE'] },
+  ];
+  for (const log of logs) {
+    await prisma.dailyLog.create({
+      data: {
+        patientId,
+        date: stringToDateColumn(addDays(today, log.offset)),
+        flow: encryption.encryptNullable(log.flow, 'womens_health.DailyLog.flow'),
+        mood: encryption.encrypt(log.mood, 'womens_health.DailyLog.mood'),
+        symptoms: log.symptoms.length
+          ? encryption.encrypt(JSON.stringify(log.symptoms), 'womens_health.DailyLog.symptoms')
+          : null,
+      },
+    });
+  }
+}
+
 async function seed(): Promise<void> {
   if (config.isProduction) {
     throw new Error('Refusing to seed demo data with APP_ENV=production');
@@ -619,6 +678,8 @@ async function seed(): Promise<void> {
     nasrinId,
   });
 
+  const staffLines = await seedStaffContentDemo(prisma, readableIds, { pinHash, fatherId: father.id });
+
   // The father's last chamber visit got a prescription (one tap → medicine alarms in the app).
   const visit = await prisma.appointment.findFirst({
     where: { patientId: father.id, status: 'COMPLETED' },
@@ -656,6 +717,8 @@ async function seed(): Promise<void> {
     });
   }
 
+  await addCycleHistory(nasrin.id);
+
   const codes = await prisma.patientProfile.findMany({
     where: { id: { in: [rahim.id, nasrin.id, father.id] } },
     select: { fullName: true, patientCode: true },
@@ -673,6 +736,8 @@ async function seed(): Promise<void> {
   );
   console.log('Providers and staff (web panel), same PIN:');
   for (const line of providerLines) console.log(line);
+  console.log('Staff (web panel), same PIN:');
+  for (const line of staffLines) console.log(line);
 }
 
 try {

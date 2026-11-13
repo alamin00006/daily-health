@@ -14,7 +14,7 @@ import { UserContactPointsService } from '../auth/user-contact-points.service.js
 import { NotificationPreferencesService } from './notification-preferences.service.js';
 import { DeliveryFailure } from './notifications-error-codes.js';
 import { PushSender, type PushMessage } from './push/push-sender.js';
-import { SmsSender } from './sms/sms-sender.js';
+import { SmsSender, type SmsResult } from './sms/sms-sender.js';
 
 /** Text used instead of the real one for sensitive notifications (CLAUDE.md §4). */
 const SENSITIVE_TITLE = 'দৈনিক স্বাস্থ্য';
@@ -187,6 +187,16 @@ export class NotificationDeliveryService {
     await this.prisma.notification.createMany({
       data: rows.map((row) => ({ ...row, data: row.data ?? undefined })),
     });
+  }
+
+  /**
+   * SMS to numbers that are not app users (emergency contacts). Nothing is
+   * stored here; the caller keeps the counts. Returns one result per number.
+   */
+  async sendSmsToNumbers(phones: string[], text: string): Promise<SmsResult[]> {
+    const results: SmsResult[] = [];
+    for (const phone of phones) results.push(await this.sms.send(phone, text));
+    return results;
   }
 
   private async sendPushes(

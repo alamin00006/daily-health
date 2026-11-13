@@ -283,6 +283,20 @@ export class ProviderDirectoryService {
     });
   }
 
+  countPendingVerification(): Promise<number> {
+    return this.prisma.provider.count({ where: { verificationStatus: 'PENDING' } });
+  }
+
+  /** providerCode by account, for the admin's user list. */
+  async codesByUserIds(userIds: string[]): Promise<Map<string, { providerCode: string; displayName: string }>> {
+    if (userIds.length === 0) return new Map();
+    const rows = await this.prisma.provider.findMany({
+      where: { userId: { in: [...new Set(userIds)] } },
+      select: { userId: true, providerCode: true, displayName: true },
+    });
+    return new Map(rows.map((r) => [r.userId, { providerCode: r.providerCode, displayName: r.displayName }]));
+  }
+
   async findById(providerId: string): Promise<Provider | null> {
     return this.prisma.provider.findUnique({ where: { id: providerId } });
   }

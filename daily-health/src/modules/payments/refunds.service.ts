@@ -124,6 +124,11 @@ export class RefundsService {
     return waiting.length;
   }
 
+  /** Refunds still waiting (an admin must refund shurjoPay ones by hand). */
+  countOpen(): Promise<number> {
+    return this.prisma.refund.count({ where: { status: 'REQUESTED' } });
+  }
+
   async list(query: ListRefundsQuery): Promise<PaginatedResponse<AdminRefundResponse>> {
     const rows = await this.prisma.refund.findMany({
       where: { status: query.status, ...afterCursor('createdAt', query.cursor) },

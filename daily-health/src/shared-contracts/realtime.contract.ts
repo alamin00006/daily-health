@@ -27,6 +27,10 @@ export const REALTIME_EVENTS = {
   CALL_ANSWERED: 'call:answered',
   /** server → online providers: the quick consult queue changed; refetch it. */
   QUICK_QUEUE_CHANGED: 'quick-consult:queue',
+  /** server → staff: a new SOS request; refetch the emergency queue. */
+  EMERGENCY_NEW: 'emergency:new',
+  /** server → staff and the family: an SOS request changed. */
+  EMERGENCY_UPDATED: 'emergency:updated',
 } as const;
 
 export interface ChatMessageEvent {
