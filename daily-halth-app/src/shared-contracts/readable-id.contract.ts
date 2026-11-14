@@ -1,4 +1,4 @@
-// Copied from the API (daily-health/src/shared-contracts) until packages/shared exists. Do not edit here.
+// Copied from the API (daily-health/src/shared-contracts) by scripts/copy-shared-contracts.mjs. Do not edit here.
 import { z } from 'zod';
 
 /**
@@ -111,7 +111,11 @@ const TITLES = new Set([
 export function nameInitial(name: string): string {
   const words = name.normalize('NFC').trim().split(/\s+/).filter(Boolean);
   const first =
-    words.find((word) => !TITLES.has(word.toLowerCase().replace(/[.:]+$/, ''))) ?? words[0] ?? '';
+    words.find(
+      (word) => !TITLES.has(word.toLowerCase().replace(/[.:]+$/, '')),
+    ) ??
+    words[0] ??
+    '';
   // The first code point, not grapheme: for "রি" we want "র", not "রি".
   const codePoint = first.codePointAt(0);
   const char = codePoint === undefined ? '' : String.fromCodePoint(codePoint);
@@ -124,7 +128,7 @@ export function formatReadableId(
   kind: ReadableIdKind,
   initial: string,
   period: string,
-  serial: number
+  serial: number,
 ): string {
   return `${READABLE_ID_PREFIX[kind]}${initial}-${period}-${String(serial).padStart(4, '0')}`;
 }
@@ -145,5 +149,37 @@ export const readableIdSchema = z
 /** A patient's ID (starts with P). */
 export const patientCodeSchema = readableIdSchema.refine(
   (id) => id.startsWith(READABLE_ID_PREFIX.PATIENT),
-  { message: 'Not a patient ID' }
+  { message: 'Not a patient ID' },
 );
+
+/**
+ * References that are not people, without a name letter: `BK-2611-0042`
+ * booking, `RC-2611-0042` payment receipt, `ST-2611-0042` provider payout
+ * (settlement), `RX-2611-0042` prescription. YYMM in Asia/Dhaka + that month's serial. B, R and S are not
+ * person prefixes (P/D/N/T/M/A), so a reference never looks like someone's ID
+ * ("PY-…" would: a patient named Yasmin).
+ */
+export const REFERENCE_CODE_PREFIX = {
+  BOOKING: 'BK',
+  PAYMENT: 'RC',
+  PAYOUT: 'ST',
+  PRESCRIPTION: 'RX',
+  /** Emergency (SOS) requests. */
+  EMERGENCY: 'EM',
+  /** HealthStore orders. */
+  ORDER: 'OD',
+} as const;
+export type ReferenceCodeKind = keyof typeof REFERENCE_CODE_PREFIX;
+
+export const BOOKING_CODE_PATTERN = /^BK-\d{4}-\d{4,}$/;
+export const PAYMENT_INVOICE_PATTERN = /^RC-\d{4}-\d{4,}$/;
+export const PRESCRIPTION_CODE_PATTERN = /^RX-\d{4}-\d{4,}$/;
+export const ORDER_CODE_PATTERN = /^OD-\d{4}-\d{4,}$/;
+
+export function formatReferenceCode(
+  kind: ReferenceCodeKind,
+  period: string,
+  serial: number,
+): string {
+  return `${REFERENCE_CODE_PREFIX[kind]}-${period}-${String(serial).padStart(4, '0')}`;
+}

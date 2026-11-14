@@ -3,13 +3,14 @@ import { View } from 'react-native';
 
 import { colors } from '@/theme/design-tokens';
 
-type Tone = 'primary' | 'danger' | 'success' | 'neutral';
+type Tone = 'primary' | 'danger' | 'success' | 'neutral' | 'rose';
 
 const TONE: Record<Tone, { box: string; color: string }> = {
   primary: { box: 'bg-primary-100', color: colors.primary },
   danger: { box: 'bg-danger-soft', color: colors.danger },
   success: { box: 'bg-success-soft', color: colors.success },
   neutral: { box: 'bg-surface', color: colors.inkMuted },
+  rose: { box: 'bg-rose-soft', color: colors.rose },
 };
 
 const SIZE = {

@@ -42,6 +42,7 @@ import {
 } from './seed-staff-content-demo.js';
 import { removeShopDemo, seedShopDemo } from './seed-shop-demo.js';
 import { removeCommunityDemo, seedCommunityDemo } from './seed-community-demo.js';
+import { removeNutritionDemo, seedNutritionDemo } from './seed-nutrition-demo.js';
 import {
   seedDemoMedicationPlans,
   seedMedicineCatalog,
@@ -70,6 +71,26 @@ const storedUploads = new StoredUploadsService(
 );
 const uploadProcessor = new UploadedFileProcessorService();
 const readableIds = new ReadableIdService(prisma);
+
+/**
+ * Demo files need object storage (R2/S3). When it is not configured or not
+ * reachable, the seed still creates every row and just leaves the files out.
+ */
+let storageUnavailable = false;
+function warnStorageUnavailable(error: unknown): void {
+  if (storageUnavailable) return;
+  storageUnavailable = true;
+  const reason = error instanceof Error ? error.message.split(/\r?\n/)[0] : String(error);
+  console.warn(`Object storage not reachable (${reason}); demo files are skipped.`);
+}
+async function removeStoredFile(storageKey: string, mimeType: string): Promise<void> {
+  if (storageUnavailable) return;
+  try {
+    await storedUploads.remove(storageKey, mimeType);
+  } catch (error) {
+    warnStorageUnavailable(error);
+  }
+}
 
 /** Deterministic pseudo-random numbers, so every seed run looks the same. */
 function seededRandom(seed: number): () => number {
@@ -119,6 +140,7 @@ async function removePreviousDemoData(): Promise<void> {
   await removeStaffContentDemo(prisma, profileIds);
   await removeShopDemo(prisma, userIds);
   await removeCommunityDemo(prisma, userIds);
+  await removeNutritionDemo(prisma, profileIds);
   await removeDoctorsDemo(prisma, profileIds);
 
   const files = await prisma.medicalFile.findMany({
@@ -126,11 +148,11 @@ async function removePreviousDemoData(): Promise<void> {
     select: { storageKey: true, mimeType: true, deletedAt: true },
   });
   for (const file of files) {
-    await storedUploads.remove(file.storageKey, file.mimeType);
+    await removeStoredFile(file.storageKey, file.mimeType);
   }
   for (const profile of profiles) {
     if (profile.avatarStorageKey) {
-      await storedUploads.remove(profile.avatarStorageKey, 'image/webp');
+      await removeStoredFile(profile.avatarStorageKey, 'image/webp');
     }
   }
 
@@ -415,8 +437,15 @@ async function addFile(
     uploadedDaysAgo: number;
   },
 ): Promise<void> {
+  if (storageUnavailable) return;
   const processed = await uploadProcessor.process(file, { allowPdf: true });
-  const storageKey = await storedUploads.store(processed, 'private');
+  let storageKey: string;
+  try {
+    storageKey = await storedUploads.store(processed, 'private');
+  } catch (error) {
+    warnStorageUnavailable(error);
+    return;
+  }
   await prisma.medicalFile.create({
     data: {
       patientId: profileId,
@@ -685,6 +714,7 @@ async function seed(): Promise<void> {
   const staffLines = await seedStaffContentDemo(prisma, readableIds, { pinHash, fatherId: father.id });
   staffLines.push(...(await seedShopDemo(prisma)));
   staffLines.push(...(await seedCommunityDemo(prisma, { rahimId, nasrinId })));
+  staffLines.push(...(await seedNutritionDemo(prisma, readableIds, { rahimId, rahimProfileId: rahim.id })));
 
   // The father's last chamber visit got a prescription (one tap → medicine alarms in the app).
   const visit = await prisma.appointment.findFirst({

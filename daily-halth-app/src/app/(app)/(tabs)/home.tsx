@@ -1,28 +1,26 @@
 import { router } from 'expo-router';
 import {
-  Bell,
   CircleAlert,
-  FilePlus2,
   HeartPulse,
   MailOpen,
   Pill,
-  QrCode,
-  Settings,
-  UsersRound,
-  type LucideIcon,
+  Siren,
 } from 'lucide-react-native';
 import { Pressable, ScrollView, View } from 'react-native';
 
 import { CreateOwnProfileCard, GuestNotice } from '@/components/app/account-gates';
-import { BrandLogo } from '@/components/brand/brand-logo';
-import { ActiveProfileChip } from '@/components/profile/active-profile-chip';
+import { HealthTipCard } from '@/components/content/health-tip-card';
+import { ProviderHomeCard } from '@/components/provider/provider-home-card';
 import { ActionButton } from '@/components/ui/action-button';
 import { BanglaText } from '@/components/ui/bangla-text';
 import { IconBadge } from '@/components/ui/icon-badge';
 import { ProgressRing } from '@/components/ui/progress-ring';
-import { IconButton } from '@/components/ui/screen-header';
 import { ScrollScreen } from '@/components/ui/scroll-screen';
 import { SectionHeader } from '@/components/ui/list-row';
+import { AppointmentCard } from '@/components/doctors/appointment-card';
+import { useNextAppointment } from '@/features/doctors/use-doctors';
+import { useLatestHealthTips } from '@/features/content/use-health-tips';
+import { useActiveEmergency } from '@/features/emergency/use-emergency';
 import { ErrorState, LoadingList, SkeletonBlock } from '@/components/ui/state-views';
 import { StatusPill } from '@/components/ui/status-pill';
 import { SurfaceCard } from '@/components/ui/surface-card';
@@ -31,6 +29,18 @@ import { useLatestVitals } from '@/features/health/use-health';
 import { doseText } from '@/features/medicine/medicine-display';
 import { useDaySchedule, usePlans, useRecordDose } from '@/features/medicine/use-medicine';
 import { useUnreadCount } from '@/features/notifications/use-notifications';
+import { useShopEnabled } from '@/features/shop/use-shop';
+import { useAddToCart } from '@/features/shop/use-add-to-cart';
+import {
+  CommonConcerns,
+  HomeHeader,
+  OtherServices,
+  ServiceCards,
+  ShopHomeStrip,
+  TipsCarousel,
+  TopDoctors,
+  TrustRow,
+} from '@/components/home/home-sections';
 import { canEdit } from '@/features/profiles/profile-permissions';
 import { useActiveProfile, useMyInvites } from '@/features/profiles/use-profiles';
 import { toBanglaDigits } from '@/lib/bangla-digits';
@@ -54,30 +64,6 @@ function greeting(): string {
   return period === 'রাত' ? 'শুভ রাত্রি' : `শুভ ${period}`;
 }
 
-function QuickTile({
-  icon,
-  label,
-  onPress,
-}: {
-  icon: LucideIcon;
-  label: string;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      onPress={onPress}
-      className="min-h-[104px] flex-1 justify-between rounded-3xl border border-line/70 bg-surface-card p-4 active:bg-primary-50">
-      <IconBadge icon={icon} size="sm" />
-      <BanglaText variant="label" className="font-bangla-semibold">
-        {label}
-      </BanglaText>
-    </Pressable>
-  );
-}
-
-/** Today's medicine for the selected person, with the next dose one tap away. */
 function TodayMedicineCard({ profile }: { profile: PatientProfileResponse }) {
   const day = useDaySchedule(profile.id);
   const record = useRecordDose(profile.id);
@@ -186,6 +172,70 @@ function TodayMedicineCard({ profile }: { profile: PatientProfileResponse }) {
   );
 }
 
+/** আকস্মিক সেবা: always one tap away; shows the live request when there is one. */
+function EmergencyButton({ profileId }: { profileId?: string }) {
+  const active = useActiveEmergency(profileId);
+  const live = active.data;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="আকস্মিক সেবা"
+      onPress={() => router.push('/emergency')}
+      className="min-h-[64px] flex-row items-center gap-3 rounded-3xl bg-danger px-4 py-3 active:opacity-90">
+      <View className="h-11 w-11 items-center justify-center rounded-2xl bg-white/20">
+        <Siren size={24} color={colors.white} />
+      </View>
+      <View className="flex-1">
+        <BanglaText className="font-bangla-bold text-[18px] leading-[28px] text-white">আকস্মিক সেবা</BanglaText>
+        <BanglaText variant="caption" className="text-white/90">
+          {live
+            ? `${live.code} · ${live.status === 'DISPATCHED' ? 'সাহায্য আসছে' : 'সাহায্যের অপেক্ষায়'}`
+            : 'অ্যাম্বুলেন্স, ডাক্তার বা জরুরি সাহায্য'}
+        </BanglaText>
+      </View>
+    </Pressable>
+  );
+}
+
+/** The newest health tips (hidden when there are none). */
+function HealthTipsStrip() {
+  const tips = useLatestHealthTips();
+  const list = tips.data ?? [];
+  if (list.length === 0) return null;
+  return (
+    <View className="gap-3">
+      <SectionHeader title="স্বাস্থ্য টিপস" actionLabel="সব দেখুন" onAction={() => router.push('/tips')} />
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-3 pr-5">
+        {list.map((tip) => (
+          <HealthTipCard key={tip.id} tip={tip} compact />
+        ))}
+      </ScrollView>
+    </View>
+  );
+}
+
+/** The soonest booking (hidden when there is none). */
+function NextAppointmentCard({ profileId }: { profileId: string }) {
+  const next = useNextAppointment(profileId);
+  const a = next.data;
+  if (!a) return null;
+  return (
+    <View className="gap-3">
+      <SectionHeader
+        title="পরবর্তী অ্যাপয়েন্টমেন্ট"
+        actionLabel="সব দেখুন"
+        onAction={() => router.push('/appointments')}
+      />
+      <AppointmentCard
+        appointment={a}
+        onPress={() =>
+          router.push({ pathname: '/appointments/[appointmentId]', params: { appointmentId: a.id } })
+        }
+      />
+    </View>
+  );
+}
+
 function LowStockAlerts({ profileId }: { profileId: string }) {
   const plans = usePlans(profileId);
   const low = (plans.data ?? []).filter((plan) => plan.isActive && plan.lowStock);
@@ -267,36 +317,52 @@ export default function HomeScreen() {
   const unread = useUnreadCount();
   const invites = useMyInvites();
   const today = dhakaDate();
+  const shopEnabled = useShopEnabled();
+  const cart = useAddToCart();
+  const firstName = profile?.fullName.split(' ')[0];
 
   const header = (
-    <View className="flex-row items-center justify-between px-5 pb-2 pt-2">
-      <View className="flex-row items-center gap-3">
-        <BrandLogo size={38} />
-        <View>
-          <BanglaText variant="heading">{greeting()}</BanglaText>
-          <BanglaText variant="caption">
-            {BANGLA_WEEKDAYS[weekdayOf(today)]}, {formatDate(today)}
-          </BanglaText>
-        </View>
-      </View>
-      {isGuest ? null : (
-        <View className="flex-row gap-2">
-          <IconButton
-            icon={Bell}
-            label="বার্তা"
-            badge={unread.data ?? 0}
-            onPress={() => router.push('/notifications')}
-          />
-          <IconButton icon={Settings} label="সেটিংস" onPress={() => router.push('/settings')} />
-        </View>
-      )}
+    <HomeHeader
+      profile={isGuest ? null : profile}
+      isGuest={isGuest}
+      unread={unread.data ?? 0}
+      cartCount={cart.itemCount}
+      shopEnabled={shopEnabled}
+    />
+  );
+
+  const welcome = (
+    <View>
+      <BanglaText variant="heading">
+        {greeting()}
+        {firstName ? `, ${firstName}` : ''}!
+      </BanglaText>
+      <BanglaText variant="caption">
+        {BANGLA_WEEKDAYS[weekdayOf(today)]}, {formatDate(today)}
+      </BanglaText>
     </View>
+  );
+
+  // Browsing parts everyone sees (guests too): offers, specialties, doctors, shop.
+  const discover = (
+    <>
+      <TipsCarousel />
+      <CommonConcerns />
+      <TopDoctors />
+      {shopEnabled ? <ShopHomeStrip /> : null}
+    </>
   );
 
   if (isGuest) {
     return (
-      <ScrollScreen inTabs header={header}>
+      <ScrollScreen inTabs header={header} onRefresh={async () => refetch()}>
+        {welcome}
+        <ServiceCards shopEnabled={shopEnabled} signedUp={false} />
+        <EmergencyButton />
         <GuestNotice what="নিজের ও পরিবারের স্বাস্থ্য তথ্য, রিপোর্ট আর ওষুধের অ্যালার্ম" />
+        {discover}
+        <HealthTipsStrip />
+        <TrustRow />
       </ScrollScreen>
     );
   }
@@ -324,50 +390,42 @@ export default function HomeScreen() {
         </Pressable>
       ) : null}
 
+      {welcome}
+
       {isLoading ? (
         <LoadingList rows={2} rowClassName="h-40" />
       ) : isError ? (
         <ErrorState error={null} onRetry={() => void refetch()} />
       ) : !profile ? (
-        <CreateOwnProfileCard />
+        <>
+          <ProviderHomeCard />
+          <CreateOwnProfileCard />
+          <ServiceCards shopEnabled={shopEnabled} signedUp={false} />
+          <EmergencyButton />
+          {discover}
+          <HealthTipsStrip />
+          <TrustRow />
+        </>
       ) : (
         <>
-          <ActiveProfileChip profile={profile} count={profiles.length} />
+          <ProviderHomeCard />
+          <ServiceCards shopEnabled={shopEnabled} signedUp />
+          <EmergencyButton profileId={profile.id} />
           <TodayMedicineCard profile={profile} />
+          <NextAppointmentCard profileId={profile.id} />
           <LowStockAlerts profileId={profile.id} />
-
-          <View className="gap-3">
-            <SectionHeader title="দ্রুত কাজ" />
-            <View className="flex-row gap-3">
-              <QuickTile
-                icon={HeartPulse}
-                label="মাপ লিখুন"
-                onPress={() => router.push('/vitals/new')}
-              />
-              <QuickTile
-                icon={FilePlus2}
-                label="রিপোর্ট যোগ করুন"
-                onPress={() => router.push('/records/upload')}
-              />
-            </View>
-            <View className="flex-row gap-3">
-              <QuickTile
-                icon={QrCode}
-                label="হেলথ কার্ড"
-                onPress={() => router.push('/health-card')}
-              />
-              <QuickTile icon={UsersRound} label="পরিবার" onPress={() => router.push('/family')} />
-            </View>
-          </View>
-
+          <OtherServices profile={profile} shopEnabled={shopEnabled} />
+          {discover}
           <View className="gap-3">
             <SectionHeader
-              title="সবশেষ মাপ"
+              title={profiles.length > 1 ? `সবশেষ মাপ · ${profile.fullName}` : 'সবশেষ মাপ'}
               actionLabel="সব দেখুন"
               onAction={() => router.push('/vitals')}
             />
             <LatestVitalsStrip profileId={profile.id} />
           </View>
+          <HealthTipsStrip />
+          <TrustRow />
         </>
       )}
     </ScrollScreen>

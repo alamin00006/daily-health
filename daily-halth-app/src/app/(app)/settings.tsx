@@ -1,6 +1,6 @@
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
-import { LogOut, Mail, ShieldCheck, UsersRound } from 'lucide-react-native';
+import { LogOut, Mail, ShieldCheck, Stethoscope, UsersRound } from 'lucide-react-native';
 import { View } from 'react-native';
 
 import { ActionButton } from '@/components/ui/action-button';
@@ -53,7 +53,13 @@ export default function SettingsScreen() {
           subtitle="৬ সংখ্যার পিন ও ইমেইল যাচাই"
           divider
         />
-        <ListRow icon={UsersRound} title="পরিবার ও সদস্য" onPress={() => router.push('/family')} />
+        <ListRow icon={UsersRound} title="পরিবার ও সদস্য" onPress={() => router.push('/family')} divider />
+        <ListRow
+          icon={Stethoscope}
+          title="সেবাদাতা (ডাক্তার, পুষ্টিবিদ, ফিজিও)"
+          subtitle="নিবন্ধন, প্রোফাইল, অনলাইন হওয়া আর রোগী দেখা"
+          onPress={() => router.push('/provider')}
+        />
       </SurfaceCard>
 
       <AlarmReliabilityCard />

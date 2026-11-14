@@ -9,9 +9,13 @@ import {
   writeStoredSession,
 } from '@/lib/secure-session-storage';
 import type { AuthTokensResponse, AuthUserSummary } from '@/shared-contracts/auth.contract';
+import { clearWomensHealthLocks } from '@/features/womens-health/womens-health-lock';
+import { getDeviceInfo } from '@/lib/device-identity';
 
 /** Refresh this long before the access token actually expires. */
 const EXPIRY_MARGIN_MS = 30_000;
+/** The splash waits at most this long for a guest session on first open. */
+const GUEST_START_TIMEOUT_MS = 8_000;
 
 export type SessionStatus = 'restoring' | 'signedOut' | 'signedIn';
 
@@ -22,7 +26,11 @@ interface SessionState {
   accessToken: string | null;
   accessTokenExpiresAt: number;
 
-  /** On app start: reads the keychain and, if logged in, refreshes the access token. */
+  /**
+   * On app start: reads the keychain and, if logged in, refreshes the access token.
+   * With no saved session it opens a guest session, so the app starts on home;
+   * login is offered when someone picks something that needs an account.
+   */
   restore(): Promise<void>;
   /** After login/signup/reset: keeps tokens and marks the user signed in. */
   startSession(tokens: AuthTokensResponse): Promise<void>;
@@ -40,7 +48,9 @@ export const useSessionStore = create<SessionState>()((set, get) => ({
     // A broken keychain entry must not leave the app stuck on the splash screen.
     const stored = await readStoredSession().catch(() => null);
     if (!stored) {
-      set({ status: 'signedOut', user: null });
+      // Offline or the API is down: the welcome screen lets them try again.
+      const guest = await startGuestSession().catch(() => null);
+      if (!guest) set({ status: 'signedOut', user: null });
       return;
     }
     // Signed in straight away with the saved user, so the app opens offline too
@@ -50,6 +60,8 @@ export const useSessionStore = create<SessionState>()((set, get) => ({
   },
 
   async startSession(tokens) {
+    // Logging in from a guest session needs no extra call: the API signs out whoever
+    // was signed in before on this app install (auth-sessions.service.ts).
     await writeStoredSession({ refreshToken: tokens.refreshToken, user: tokens.user });
     set({
       status: 'signedIn',
@@ -65,9 +77,21 @@ export const useSessionStore = create<SessionState>()((set, get) => ({
       await authEndpoints.logout().catch(() => undefined);
     }
     await clearStoredSession();
+    await clearWomensHealthLocks().catch(() => undefined);
     set({ status: 'signedOut', user: null, accessToken: null, accessTokenExpiresAt: 0 });
   },
 }));
+
+/** A browse-only guest session (CLAUDE.md §1); null if it could not start in time. */
+async function startGuestSession(): Promise<AuthTokensResponse | null> {
+  const tokens = await Promise.race([
+    authEndpoints.loginAsGuest(await getDeviceInfo()),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), GUEST_START_TIMEOUT_MS)),
+  ]);
+  if (!tokens) return null;
+  await useSessionStore.getState().startSession(tokens);
+  return tokens;
+}
 
 let refreshInFlight: Promise<string | null> | null = null;
 

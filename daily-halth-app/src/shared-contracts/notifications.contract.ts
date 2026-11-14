@@ -1,4 +1,4 @@
-// Copied from the API (daily-health/src/shared-contracts) until packages/shared exists. Do not edit here.
+// Copied from the API (daily-health/src/shared-contracts) by scripts/copy-shared-contracts.mjs. Do not edit here.
 import { z } from 'zod';
 import { timeOfDaySchema } from './medicine.contract';
 
@@ -12,7 +12,10 @@ export const updateNotificationPreferencesRequestSchema = z
     /** Minutes after a dose time before family is alerted. */
     doseBackupDelayMin: z.number().int().min(10).max(240),
     /** Minutes before a follow-up or appointment, e.g. [1440, 120]. */
-    followUpOffsetsMin: z.array(z.number().int().min(10).max(10_080)).min(1).max(4),
+    followUpOffsetsMin: z
+      .array(z.number().int().min(10).max(10_080))
+      .min(1)
+      .max(4),
     /** Pushes between these Asia/Dhaka times arrive without sound; both or neither. */
     quietStart: timeOfDaySchema.nullable(),
     quietEnd: timeOfDaySchema.nullable(),
@@ -26,7 +29,7 @@ export const updateNotificationPreferencesRequestSchema = z
       body.quietStart === undefined ||
       body.quietEnd === undefined ||
       (body.quietStart === null) === (body.quietEnd === null),
-    { message: 'Set both quiet times or neither', path: ['quietEnd'] }
+    { message: 'Set both quiet times or neither', path: ['quietEnd'] },
   );
 export type UpdateNotificationPreferencesRequest = z.infer<
   typeof updateNotificationPreferencesRequestSchema

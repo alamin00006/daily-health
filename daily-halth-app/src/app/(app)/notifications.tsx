@@ -1,4 +1,6 @@
 import { router } from 'expo-router';
+
+import { notificationHref, type NotificationLink } from '@/features/notifications/notification-route';
 import { Bell, CheckCheck, Pill, TriangleAlert } from 'lucide-react-native';
 import { Pressable, View } from 'react-native';
 
@@ -28,9 +30,10 @@ export default function NotificationsScreen() {
 
   const open = (notification: NotificationResponse) => {
     if (!notification.readAt) one.mutate(notification.id);
-    const data = notification.data as { screen?: string; profileId?: string } | null;
+    const data = notification.data as NotificationLink | null;
     if (data?.profileId) setActiveProfile(data.profileId);
-    if (data?.screen === 'medicine') router.push('/medicine');
+    const href = notificationHref(data);
+    if (href) router.push(href);
   };
 
   return (

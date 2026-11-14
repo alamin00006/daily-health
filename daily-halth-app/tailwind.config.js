@@ -8,19 +8,21 @@ module.exports = {
       // Brand tokens from the prototype (CLAUDE.md §7), plus tints and semantic colours.
       // Raw values for icons and native props: src/theme/design-tokens.ts.
       colors: {
+        // Admins can change the primary colour (panel → অ্যাপের রং), so its shades are CSS
+        // variables set at runtime (src/theme/runtime-theme.tsx); defaults in global.css.
         primary: {
-          DEFAULT: '#0f5c5a',
-          50: '#f0f8f5',
-          100: '#dcefe8',
-          200: '#bfe0d5',
-          300: '#93c9b9',
-          400: '#4f9f91',
-          500: '#1f7a74',
-          600: '#0f5c5a',
-          700: '#0b4846',
-          800: '#083635',
-          mint: '#dcefe8',
-          soft: '#e4f3ed',
+          DEFAULT: 'rgb(var(--primary-600) / <alpha-value>)',
+          50: 'rgb(var(--primary-50) / <alpha-value>)',
+          100: 'rgb(var(--primary-100) / <alpha-value>)',
+          200: 'rgb(var(--primary-200) / <alpha-value>)',
+          300: 'rgb(var(--primary-300) / <alpha-value>)',
+          400: 'rgb(var(--primary-400) / <alpha-value>)',
+          500: 'rgb(var(--primary-500) / <alpha-value>)',
+          600: 'rgb(var(--primary-600) / <alpha-value>)',
+          700: 'rgb(var(--primary-700) / <alpha-value>)',
+          800: 'rgb(var(--primary-800) / <alpha-value>)',
+          mint: 'rgb(var(--primary-mint) / <alpha-value>)',
+          soft: 'rgb(var(--primary-soft) / <alpha-value>)',
         },
         surface: { DEFAULT: '#f4f9f7', card: '#ffffff' },
         ink: { DEFAULT: '#12302b', muted: '#546b65', subtle: '#869a94' },

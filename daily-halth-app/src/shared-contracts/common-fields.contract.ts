@@ -1,10 +1,13 @@
-// Copied from the API (daily-health/src/shared-contracts) until packages/shared exists. Do not edit here.
-// API contracts shared with the mobile app and web panel.
-// Pure zod, no Nest imports: this folder moves to packages/shared as is.
+// Copied from the API (daily-health/src/shared-contracts) by scripts/copy-shared-contracts.mjs. Do not edit here.
 import { z } from 'zod';
 
 /** Trimmed and lowercased, so "Amin@Mail.com " and "amin@mail.com" are one account. */
-export const emailSchema = z.string().trim().toLowerCase().max(254).pipe(z.email());
+export const emailSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .max(254)
+  .pipe(z.email());
 
 /**
  * Bangladeshi mobile number, stored in E.164 (CLAUDE.md §4): +8801XXXXXXXXX,
@@ -22,7 +25,11 @@ export const bangladeshPhoneSchema = z
     const local = digits.replace(/^\+?880/, '');
     return local.startsWith('0') ? `+880${local.slice(1)}` : `+880${local}`;
   })
-  .pipe(z.string().regex(/^\+8801[3-9]\d{8}$/, 'Must be a Bangladeshi mobile number'));
+  .pipe(
+    z
+      .string()
+      .regex(/^\+8801[3-9]\d{8}$/, 'Must be a Bangladeshi mobile number'),
+  );
 
 const TRIVIAL_PINS = new Set([
   '012345',
@@ -47,7 +54,9 @@ export const pinSchema = z
     message: 'PIN is too easy to guess',
   });
 
-export const otpCodeSchema = z.string().regex(/^\d{6}$/, 'Code must be 6 digits');
+export const otpCodeSchema = z
+  .string()
+  .regex(/^\d{6}$/, 'Code must be 6 digits');
 
 export const devicePlatformSchema = z.enum(['ANDROID', 'IOS', 'WEB']);
 

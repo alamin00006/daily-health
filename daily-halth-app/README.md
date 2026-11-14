@@ -18,19 +18,31 @@ OTP emails do not leave your PC in development: open Mailpit at http://localhost
 src/
   app/                 Expo Router routes
     (auth)/            logged-out screens: welcome, login, request-code, verify-code, set-pin
-    (app)/(tabs)/      home, health (profile), medicine
+    (app)/(tabs)/      home, health (profile), doctors, medicine
     (app)/             profile switcher, profiles, family + invitations, vitals, conditions,
-                       records, health card, medicine plans, notifications inbox, settings
+                       records, health card, medicine plans, notifications inbox, settings,
+                       doctors/[id] (+ book), appointments (+ detail), follow-ups/new, my-doctors
   api/                 Axios client (timeouts, token refresh, uploads) and typed endpoints per module
   stores/              Zustand: session, auth flow, active profile (persisted)
   features/            TanStack Query hooks + logic per module (auth, profiles, health, records,
-                       medicine, notifications, app services)
+                       medicine, doctors + appointments, notifications, app services)
   components/          ui/ building blocks, charts/, and per-feature components
   lib/                 secure storage, kv store, Bangla formatting, file pickers, toasts
   shared-contracts/    copy of the API's zod contracts (until packages/shared exists)
 modules/
   exact-alarm-permission/  local Expo module (Kotlin): Android 12+ exact-alarm check + settings
 ```
+
+## Doctors and appointments
+
+- The ডাক্তার tab searches verified providers (name or BMDC number, specialty, online now,
+  female doctors, mode). Guests can browse; booking needs an account with edit rights on the
+  active profile.
+- Booking: mode → date → chamber serial or time slot → reason. A paid booking holds its serial for
+  10 minutes. Until bKash/Nagad (step 6), development builds show a "টেস্ট পেমেন্ট" button that
+  calls the API's dev-only confirm; release builds show a "coming soon" note instead.
+- Follow-ups set by a doctor, or added by the family for a doctor outside the app, are reminded
+  24 h and 2 h before. Notification taps open the appointment (`features/notifications/notification-route.ts`).
 
 ## Dose alarms
 

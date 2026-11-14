@@ -1,6 +1,9 @@
-// Copied from the API (daily-health/src/shared-contracts) until packages/shared exists. Do not edit here.
+// Copied from the API (daily-health/src/shared-contracts) by scripts/copy-shared-contracts.mjs. Do not edit here.
 import { z } from 'zod';
-import { calendarDateSchema, paginationQuerySchema } from './common-fields.contract';
+import {
+  calendarDateSchema,
+  paginationQuerySchema,
+} from './common-fields.contract';
 
 export const medicineFormSchema = z.enum([
   'TABLET',
@@ -34,14 +37,27 @@ export const doseUnitSchema = z.enum([
 ]);
 export type DoseUnit = z.infer<typeof doseUnitSchema>;
 
-export const mealTimingSchema = z.enum(['BEFORE_MEAL', 'AFTER_MEAL', 'WITH_MEAL', 'ANY']);
+export const mealTimingSchema = z.enum([
+  'BEFORE_MEAL',
+  'AFTER_MEAL',
+  'WITH_MEAL',
+  'ANY',
+]);
 export type MealTiming = z.infer<typeof mealTimingSchema>;
 
-export const doseStatusSchema = z.enum(['PENDING', 'TAKEN', 'MISSED', 'SKIPPED', 'SNOOZED']);
+export const doseStatusSchema = z.enum([
+  'PENDING',
+  'TAKEN',
+  'MISSED',
+  'SKIPPED',
+  'SNOOZED',
+]);
 export type DoseStatus = z.infer<typeof doseStatusSchema>;
 
 /** "08:00", "21:30": Asia/Dhaka wall-clock time, 24-hour. */
-export const timeOfDaySchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use HH:MM (24-hour)');
+export const timeOfDaySchema = z
+  .string()
+  .regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use HH:MM (24-hour)');
 
 /** 0 = Sunday … 6 = Saturday. */
 export const weekdaySchema = z.number().int().min(0).max(6);
@@ -87,7 +103,13 @@ const planFieldsSchema = z.object({
   endDate: calendarDateSchema.nullable().optional(),
   times: timesSchema,
   /** Units in hand; omit to not track stock. */
-  stockQty: z.number().min(0).max(10_000).multipleOf(0.25).nullable().optional(),
+  stockQty: z
+    .number()
+    .min(0)
+    .max(10_000)
+    .multipleOf(0.25)
+    .nullable()
+    .optional(),
   /** Refill alert when this many days of stock are left. */
   refillAlertDays: z.number().int().min(0).max(60).default(5),
 });
@@ -95,9 +117,11 @@ const planFieldsSchema = z.object({
 // POST /api/v1/profiles/:profileId/medication-plans
 export const createMedicationPlanRequestSchema = planFieldsSchema.refine(
   (plan) => !plan.endDate || !plan.startDate || plan.endDate >= plan.startDate,
-  { message: 'End date must not be before the start date', path: ['endDate'] }
+  { message: 'End date must not be before the start date', path: ['endDate'] },
 );
-export type CreateMedicationPlanRequest = z.infer<typeof createMedicationPlanRequestSchema>;
+export type CreateMedicationPlanRequest = z.infer<
+  typeof createMedicationPlanRequestSchema
+>;
 
 // PATCH /api/v1/profiles/:profileId/medication-plans/:planId
 export const updateMedicationPlanRequestSchema = planFieldsSchema
@@ -111,7 +135,9 @@ export const updateMedicationPlanRequestSchema = planFieldsSchema
   .refine((body) => Object.keys(body).length > 0, {
     message: 'Send at least one field',
   });
-export type UpdateMedicationPlanRequest = z.infer<typeof updateMedicationPlanRequestSchema>;
+export type UpdateMedicationPlanRequest = z.infer<
+  typeof updateMedicationPlanRequestSchema
+>;
 
 // POST /api/v1/profiles/:profileId/medication-plans/:planId/restock
 export const restockRequestSchema = z.object({
@@ -190,7 +216,8 @@ export const daySchedulesQuerySchema = z.object({
  * What the app shows on a dose row:
  * UPCOMING (later today), DUE (time has come), SNOOZED, TAKEN, SKIPPED, MISSED.
  */
-export type DoseState = 'UPCOMING' | 'DUE' | 'SNOOZED' | 'TAKEN' | 'SKIPPED' | 'MISSED';
+export type DoseState =
+  'UPCOMING' | 'DUE' | 'SNOOZED' | 'TAKEN' | 'SKIPPED' | 'MISSED';
 
 export interface DoseSlotResponse {
   /** null until the dose is recorded or scheduled by the server. */
@@ -246,10 +273,12 @@ export interface AdherenceResponse {
 }
 
 // GET /api/v1/medicines?q=napa&limit=10
-export const searchMedicinesQuerySchema = paginationQuerySchema.omit({ cursor: true }).extend({
-  q: z.string().trim().min(2).max(60),
-  limit: z.coerce.number().int().min(1).max(30).default(10),
-});
+export const searchMedicinesQuerySchema = paginationQuerySchema
+  .omit({ cursor: true })
+  .extend({
+    q: z.string().trim().min(2).max(60),
+    limit: z.coerce.number().int().min(1).max(30).default(10),
+  });
 export type SearchMedicinesQuery = z.infer<typeof searchMedicinesQuerySchema>;
 
 export interface MedicineResponse {

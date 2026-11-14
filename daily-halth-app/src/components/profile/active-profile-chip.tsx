@@ -5,6 +5,7 @@ import { Pressable, View } from 'react-native';
 import { BanglaText } from '@/components/ui/bangla-text';
 import { ProfileAvatar } from '@/components/ui/profile-avatar';
 import { relationLabel } from '@/features/profiles/profile-permissions';
+import { useActiveProfile } from '@/features/profiles/use-profiles';
 import type { PatientProfileResponse } from '@/shared-contracts/profiles.contract';
 import { colors } from '@/theme/design-tokens';
 
@@ -39,4 +40,11 @@ export function ActiveProfileChip({
       <ChevronDown size={18} color={colors.inkMuted} strokeWidth={2} />
     </Pressable>
   );
+}
+
+/** The chip for the active profile; nothing for guests or before profiles load. */
+export function CurrentProfileChip() {
+  const { profile, profiles } = useActiveProfile();
+  if (!profile) return null;
+  return <ActiveProfileChip profile={profile} count={profiles.length} />;
 }

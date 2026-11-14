@@ -23,7 +23,9 @@ import {
 import { registerPushToken } from '@/features/notifications/push-registration';
 import { useNotificationPreferences } from '@/features/notifications/use-notifications';
 import { useLoadActiveProfile, useProfiles } from '@/features/profiles/use-profiles';
+import { useRealtimeConnection } from '@/features/realtime/realtime-connection';
 import { showToast } from '@/lib/user-feedback';
+import { notificationHref, type NotificationLink } from '@/features/notifications/notification-route';
 import { useActiveProfileStore } from '@/stores/active-profile-store';
 import { useSessionStore } from '@/stores/session-store';
 
@@ -117,13 +119,14 @@ function useNotificationResponses() {
     // Server pushes carry a deep link.
     if (data.profileId) setActiveProfile(data.profileId);
     void queryClient.invalidateQueries({ queryKey: ['notifications'] });
-    router.push(data.screen === 'medicine' ? '/medicine' : '/notifications');
+    router.push(notificationHref(data as NotificationLink) ?? '/notifications');
   }, [response, queryClient, setActiveProfile]);
 }
 
 /**
  * Background work of a signed-in session: notification channels, the offline
- * dose queue, the push token, local alarms and alarm/push taps.
+ * dose queue, the push token, local alarms, alarm/push taps and the live
+ * connection (chat, calls).
  */
 export function useAppServices(): void {
   useLoadActiveProfile();
@@ -150,4 +153,5 @@ export function useAppServices(): void {
 
   useDoseAlarmSync(registered);
   useNotificationResponses();
+  useRealtimeConnection(registered);
 }

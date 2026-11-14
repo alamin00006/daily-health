@@ -5,11 +5,10 @@ import { View } from 'react-native';
 import { ActionButton } from '@/components/ui/action-button';
 import { BanglaText } from '@/components/ui/bangla-text';
 import { IconBadge } from '@/components/ui/icon-badge';
-import { useSignOutMutation } from '@/features/auth/use-auth-mutations';
+import { openLogin } from '@/features/auth/guest-access';
 
 /** Guests can look around but cannot keep health data (CLAUDE.md §1). */
 export function GuestNotice({ what }: { what: string }) {
-  const signOut = useSignOutMutation();
   return (
     <View className="gap-4 overflow-hidden rounded-3xl bg-primary p-5">
       <View
@@ -28,8 +27,7 @@ export function GuestNotice({ what }: { what: string }) {
       <ActionButton
         label="অ্যাকাউন্ট খুলুন বা লগইন করুন"
         variant="secondary"
-        loading={signOut.isPending}
-        onPress={() => signOut.mutate()}
+        onPress={openLogin}
       />
     </View>
   );

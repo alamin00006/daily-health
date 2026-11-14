@@ -12,6 +12,7 @@ import { EmergencyModule } from './modules/emergency/emergency.module.js';
 import { ContentModule } from './modules/content/content.module.js';
 import { ShopModule } from './modules/shop/shop.module.js';
 import { CommunityModule } from './modules/community/community.module.js';
+import { NutritionModule } from './modules/nutrition/nutrition.module.js';
 import { AdminModule } from './modules/admin/admin.module.js';
 import { DoctorsModule } from './modules/doctors/doctors.module.js';
 import { HealthProfileModule } from './modules/health-profile/health-profile.module.js';
@@ -50,6 +51,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     ContentModule,
     ShopModule,
     CommunityModule,
+    NutritionModule,
     AdminModule,
   ],
 })

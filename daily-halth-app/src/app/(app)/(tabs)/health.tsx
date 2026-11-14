@@ -1,14 +1,18 @@
 import * as Clipboard from 'expo-clipboard';
 import { router } from 'expo-router';
 import {
+  CalendarClock,
   Camera,
   Copy,
   FileText,
+  Flower2,
   Pencil,
   Plus,
   QrCode,
+  ReceiptText,
   Settings,
   ShieldPlus,
+  Stethoscope,
   UsersRound,
 } from 'lucide-react-native';
 import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';
@@ -31,7 +35,7 @@ import {
   formatVitalValue,
 } from '@/features/health/health-display';
 import { useConditions, useLatestVitals } from '@/features/health/use-health';
-import { canEdit, relationLabel, ROLE_LABELS } from '@/features/profiles/profile-permissions';
+import { canEdit, canViewWomensHealth, relationLabel, ROLE_LABELS } from '@/features/profiles/profile-permissions';
 import { useActiveProfile, useSetAvatar } from '@/features/profiles/use-profiles';
 import { useMedicalFiles } from '@/features/records/use-records';
 import { apiErrorMessage } from '@/api/api-error-messages';
@@ -352,6 +356,43 @@ export default function HealthProfileScreen() {
           <RecentFiles profileId={profile.id} />
 
           <SurfaceCard className="gap-1">
+            {canViewWomensHealth(profile) ? (
+              <ListRow
+                icon={Flower2}
+                title="নারীস্বাস্থ্য"
+                subtitle="পিরিয়ড ট্র্যাকার, দিনের লক্ষণ আর গর্ভধারণ; শুধু আপনি দেখেন"
+                onPress={() => router.push('/womens-health')}
+                divider
+              />
+            ) : null}
+            <ListRow
+              icon={Stethoscope}
+              title="আমার ডাক্তার"
+              subtitle="যাঁদের দেখিয়েছেন বা ♥ দিয়ে রেখেছেন"
+              onPress={() => router.push('/my-doctors')}
+              divider
+            />
+            <ListRow
+              icon={CalendarClock}
+              title="অ্যাপয়েন্টমেন্ট ও ফলো-আপ"
+              subtitle="সিরিয়াল, অনলাইন পরামর্শ আর আবার দেখানোর তারিখ"
+              onPress={() => router.push('/appointments')}
+              divider
+            />
+            <ListRow
+              icon={FileText}
+              title="প্রেসক্রিপশন"
+              subtitle="ডাক্তারের দেওয়া প্রেসক্রিপশন; এক চাপে ওষুধের অ্যালার্ম"
+              onPress={() => router.push('/prescriptions')}
+              divider
+            />
+            <ListRow
+              icon={ReceiptText}
+              title="পেমেন্ট ও রসিদ"
+              subtitle="কী পেমেন্ট করেছেন, রসিদ আর টাকা ফেরতের অবস্থা"
+              onPress={() => router.push('/payments')}
+              divider
+            />
             <ListRow
               icon={QrCode}
               title="QR হেলথ কার্ড"

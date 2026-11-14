@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+/* Design tokens from the prototype (CLAUDE.md §7). The panel is light only:
+   clinics use it on shared desk computers in daylight. */
+@theme inline {
+  --color-primary: #0f5c5a;
+  --color-primary-700: #0b4847;
+  --color-primary-50: #eef7f3;
+  --color-mint: #dcefe8;
+  --color-soft: #e4f3ed;
+  --color-surface: #f4f9f7;
+  --color-card: #ffffff;
+  --color-ink: #12302b;
+  --color-muted: #546b65;
+  --color-line: #d3e3dd;
+  --color-danger: #c62f2f;
+  --color-danger-soft: #fbe9e9;
+  --color-warning: #a3620a;
+  --color-warning-soft: #fdf3e1;
+  --color-success: #1f7a4d;
+  --color-success-soft: #e3f4ea;
+  --color-rose: #c2475e;
+  --color-rose-soft: #fbe4e8;
+  --color-info: #2c5f9e;
+  --color-info-soft: #e6eef8;
+
+  --font-sans: var(--font-bangla), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-display-face), var(--font-bangla), sans-serif;
+}
+
+html {
+  background: var(--color-surface);
+  color: var(--color-ink);
+}
+
+body {
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  /* Bangla conjuncts need room above and below. */
+  line-height: 1.6;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* Printing a prescription: white page, no panel chrome (hidden with print:hidden). */
+@media print {
+  body {
+    background: #fff;
+  }
+  @page {
+    margin: 14mm;
+  }
+}

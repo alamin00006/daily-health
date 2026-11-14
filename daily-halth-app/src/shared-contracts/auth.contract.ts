@@ -1,6 +1,11 @@
-// Copied from the API (daily-health/src/shared-contracts) until packages/shared exists. Do not edit here.
+// Copied from the API (daily-health/src/shared-contracts) by scripts/copy-shared-contracts.mjs. Do not edit here.
 import { z } from 'zod';
-import { deviceInfoSchema, emailSchema, otpCodeSchema, pinSchema } from './common-fields.contract';
+import {
+  deviceInfoSchema,
+  emailSchema,
+  otpCodeSchema,
+  pinSchema,
+} from './common-fields.contract';
 
 export const otpPurposeSchema = z.enum(['SIGNUP', 'LOGIN', 'RESET_PIN']);
 export type OtpPurpose = z.infer<typeof otpPurposeSchema>;
@@ -101,7 +106,9 @@ export const updatePushTokenRequestSchema = z.object({
   /** null = notification permission revoked. */
   pushToken: z.string().trim().min(1).max(255).nullable(),
 });
-export type UpdatePushTokenRequest = z.infer<typeof updatePushTokenRequestSchema>;
+export type UpdatePushTokenRequest = z.infer<
+  typeof updatePushTokenRequestSchema
+>;
 
 export interface AuthUserSummary {
   id: string;

@@ -1,9 +1,19 @@
-// Copied from the API (daily-health/src/shared-contracts) until packages/shared exists. Do not edit here.
+// Copied from the API (daily-health/src/shared-contracts) by scripts/copy-shared-contracts.mjs. Do not edit here.
 import { z } from 'zod';
-import { calendarDateSchema, paginationQuerySchema } from './common-fields.contract';
+import {
+  calendarDateSchema,
+  paginationQuerySchema,
+} from './common-fields.contract';
 import { bloodGroupSchema, genderSchema } from './profiles.contract';
 
-export const vitalTypeSchema = z.enum(['BP', 'GLUCOSE', 'WEIGHT', 'PULSE', 'TEMP', 'SPO2']);
+export const vitalTypeSchema = z.enum([
+  'BP',
+  'GLUCOSE',
+  'WEIGHT',
+  'PULSE',
+  'TEMP',
+  'SPO2',
+]);
 export type VitalType = z.infer<typeof vitalTypeSchema>;
 
 /** When a glucose reading was taken. */
@@ -11,7 +21,12 @@ export const vitalContextSchema = z.enum(['FASTING', 'AFTER_MEAL', 'RANDOM']);
 export type VitalContext = z.infer<typeof vitalContextSchema>;
 
 /** Computed by the API from the reading; informational, not a diagnosis. */
-export const vitalStatusSchema = z.enum(['NORMAL', 'CONTROLLED', 'HIGH', 'LOW']);
+export const vitalStatusSchema = z.enum([
+  'NORMAL',
+  'CONTROLLED',
+  'HIGH',
+  'LOW',
+]);
 export type VitalStatus = z.infer<typeof vitalStatusSchema>;
 
 /** The unit the API stores and returns for each type (the app converts mg/dL itself). */
@@ -30,9 +45,12 @@ const FUTURE_TOLERANCE_MS = 5 * 60_000;
 const measuredAtSchema = z.iso.datetime({ offset: true }).refine(
   (value) => {
     const time = Date.parse(value);
-    return time >= Date.parse('2000-01-01T00:00:00Z') && time <= Date.now() + FUTURE_TOLERANCE_MS;
+    return (
+      time >= Date.parse('2000-01-01T00:00:00Z') &&
+      time <= Date.now() + FUTURE_TOLERANCE_MS
+    );
   },
-  { message: 'Measurement time must be between 2000 and now' }
+  { message: 'Measurement time must be between 2000 and now' },
 );
 
 const vitalCommonFields = {
@@ -41,7 +59,8 @@ const vitalCommonFields = {
   note: z.string().trim().min(1).max(500).optional(),
 };
 
-const decimalOne = (min: number, max: number) => z.number().min(min).max(max).multipleOf(0.1);
+const decimalOne = (min: number, max: number) =>
+  z.number().min(min).max(max).multipleOf(0.1);
 
 // POST /api/v1/profiles/:profileId/vitals
 export const createVitalRequestSchema = z.discriminatedUnion('type', [
@@ -128,8 +147,9 @@ export const conditionKindSchema = z.enum(['CHRONIC', 'ALLERGY', 'SURGERY']);
 export type ConditionKind = z.infer<typeof conditionKindSchema>;
 
 const sinceSchema = calendarDateSchema.refine(
-  (date) => date >= '1900-01-01' && date <= new Date().toISOString().slice(0, 10),
-  { message: 'Date must be between 1900-01-01 and today' }
+  (date) =>
+    date >= '1900-01-01' && date <= new Date().toISOString().slice(0, 10),
+  { message: 'Date must be between 1900-01-01 and today' },
 );
 
 const conditionFieldsSchema = z.object({
@@ -142,7 +162,9 @@ const conditionFieldsSchema = z.object({
 
 // POST /api/v1/profiles/:profileId/conditions
 export const createConditionRequestSchema = conditionFieldsSchema;
-export type CreateConditionRequest = z.infer<typeof createConditionRequestSchema>;
+export type CreateConditionRequest = z.infer<
+  typeof createConditionRequestSchema
+>;
 
 // PATCH /api/v1/profiles/:profileId/conditions/:conditionId
 export const updateConditionRequestSchema = conditionFieldsSchema
@@ -150,7 +172,9 @@ export const updateConditionRequestSchema = conditionFieldsSchema
   .refine((body) => Object.keys(body).length > 0, {
     message: 'Send at least one field',
   });
-export type UpdateConditionRequest = z.infer<typeof updateConditionRequestSchema>;
+export type UpdateConditionRequest = z.infer<
+  typeof updateConditionRequestSchema
+>;
 
 // GET /api/v1/profiles/:profileId/conditions?kind=ALLERGY
 export const listConditionsQuerySchema = z.object({
@@ -172,7 +196,9 @@ export const issueHealthCardRequestSchema = z.object({
   /** Days until the card stops working; omit for no expiry. */
   validForDays: z.number().int().min(1).max(3650).optional(),
 });
-export type IssueHealthCardRequest = z.infer<typeof issueHealthCardRequestSchema>;
+export type IssueHealthCardRequest = z.infer<
+  typeof issueHealthCardRequestSchema
+>;
 
 export interface HealthCardResponse {
   isActive: boolean;

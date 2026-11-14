@@ -9,6 +9,17 @@ export function canEdit(profile: Pick<PatientProfileResponse, 'myRole'> | null):
   return profile?.myRole === 'OWNER' || profile?.myRole === 'CAREGIVER';
 }
 
+/**
+ * Women's health: only the patient themself, or the OWNER when the patient
+ * has no account of their own (same rule as the API). Not offered on male profiles.
+ */
+export function canViewWomensHealth(
+  profile: Pick<PatientProfileResponse, 'gender' | 'hasLinkedAccount' | 'myRelation' | 'myRole'> | null
+): boolean {
+  if (!profile || profile.gender === 'MALE') return false;
+  return profile.hasLinkedAccount ? profile.myRelation === 'SELF' : profile.myRole === 'OWNER';
+}
+
 export function canManageMembers(profile: Pick<PatientProfileResponse, 'myRole'> | null): boolean {
   return profile?.myRole === 'OWNER';
 }

@@ -35,7 +35,15 @@
         {
           "photosPermission": "রিপোর্ট, প্রেসক্রিপশন আর প্রোফাইল ছবি যোগ করতে আপনার ছবিগুলো দেখার অনুমতি দরকার।",
           "cameraPermission": "রিপোর্ট বা প্রেসক্রিপশনের ছবি তুলতে ক্যামেরার অনুমতি দরকার।",
-          "microphonePermission": false
+          "microphonePermission": "ডাক্তারের সাথে ভিডিও কলে কথা বলতে মাইক্রোফোনের অনুমতি দরকার।"
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "জরুরি সাহায্য চাইলে আপনার অবস্থান পরিবার আর আমাদের সহায়তা দলকে পাঠাতে লোকেশনের অনুমতি দরকার।",
+          "isAndroidBackgroundLocationEnabled": false,
+          "isIosBackgroundLocationEnabled": false
         }
       ],
       "expo-sqlite",
@@ -50,7 +58,14 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.dailyhealth.app"
+      "bundleIdentifier": "com.dailyhealth.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "ডাক্তারের সাথে ভিডিও কলে আপনার ছবি দেখাতে ক্যামেরা লাগে।",
+        "NSMicrophoneUsageDescription": "ডাক্তারের সাথে কলে কথা বলতে মাইক্রোফোন লাগে।",
+        "UIBackgroundModes": [
+          "audio"
+        ]
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -59,7 +74,13 @@
       },
       "package": "com.dailyhealth.app",
       "permissions": [
-        "android.permission.SCHEDULE_EXACT_ALARM"
+        "android.permission.SCHEDULE_EXACT_ALARM",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
       ]
     },
     "scheme": "dailyhealth"

@@ -1,4 +1,4 @@
-// Copied from the API (daily-health/src/shared-contracts) until packages/shared exists. Do not edit here.
+// Copied from the API (daily-health/src/shared-contracts) by scripts/copy-shared-contracts.mjs. Do not edit here.
 import { z } from 'zod';
 import { calendarDateSchema, emailSchema } from './common-fields.contract';
 
@@ -27,8 +27,9 @@ export type ProfileRole = z.infer<typeof profileRoleSchema>;
 export type ProfileRelation = z.infer<typeof profileRelationSchema>;
 
 const dateOfBirthSchema = calendarDateSchema.refine(
-  (date) => date >= '1900-01-01' && date <= new Date().toISOString().slice(0, 10),
-  { message: 'Date of birth must be between 1900-01-01 and today' }
+  (date) =>
+    date >= '1900-01-01' && date <= new Date().toISOString().slice(0, 10),
+  { message: 'Date of birth must be between 1900-01-01 and today' },
 );
 
 const profileFieldsSchema = z.object({

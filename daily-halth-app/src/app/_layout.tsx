@@ -17,6 +17,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { queryClient } from '@/lib/query-client';
 import { useSessionStore } from '@/stores/session-store';
+import { ThemeRoot } from '@/theme/runtime-theme';
 
 // Keep the splash up until fonts are loaded and the saved session is read.
 void SplashScreen.preventAutoHideAsync();
@@ -31,6 +32,7 @@ export default function RootLayout() {
   });
   const status = useSessionStore((s) => s.status);
   const restore = useSessionStore((s) => s.restore);
+  const isGuest = useSessionStore((s) => s.user?.isGuest ?? false);
 
   useEffect(() => {
     void restore();
@@ -46,20 +48,26 @@ export default function RootLayout() {
   if (!ready) return null;
 
   const signedIn = status === 'signedIn';
+  // Guests browse the app and can open login/signup on top of it; a real login
+  // ends the guest session and closes these screens.
+  const canSeeAuth = !signedIn || isGuest;
   return (
     <QueryClientProvider client={queryClient}>
-      <SafeAreaProvider>
-        <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#f4f9f7' } }}>
-          {/* Changing `signedIn` moves the user to the right group automatically. */}
-          <Stack.Protected guard={signedIn}>
-            <Stack.Screen name="(app)" />
-          </Stack.Protected>
-          <Stack.Protected guard={!signedIn}>
-            <Stack.Screen name="(auth)" />
-          </Stack.Protected>
-        </Stack>
-        <StatusBar style="dark" />
-      </SafeAreaProvider>
+      <ThemeRoot>
+        <SafeAreaProvider>
+          <Stack
+            screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#f4f9f7' } }}>
+            {/* Changing `signedIn` moves the user to the right group automatically. */}
+            <Stack.Protected guard={signedIn}>
+              <Stack.Screen name="(app)" />
+            </Stack.Protected>
+            <Stack.Protected guard={canSeeAuth}>
+              <Stack.Screen name="(auth)" />
+            </Stack.Protected>
+          </Stack>
+          <StatusBar style="dark" />
+        </SafeAreaProvider>
+      </ThemeRoot>
     </QueryClientProvider>
   );
 }
