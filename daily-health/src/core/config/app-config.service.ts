@@ -88,18 +88,37 @@ export class AppConfigService {
     };
   }
 
+  /** S3-compatible file storage: Cloudflare R2 or AWS S3 (STORAGE_PROVIDER). */
   get storage(): {
-    rootDir: string;
+    provider: 'R2' | 'S3';
+    /** SigV4 region: "auto" for R2. */
+    region: string;
+    endpoint: string;
+    /** R2 wants <endpoint>/<bucket>/<key>; S3 wants <bucket>.<endpoint host>/<key>. */
+    forcePathStyle: boolean;
+    accessKeyId: string;
+    secretAccessKey: string;
+    publicBucket: string;
+    privateBucket: string;
     publicBaseUrl: string;
-    privateBaseUrl: string;
-    urlSigningSecret: string;
     privateUrlTtlSeconds: number;
   } {
+    const isR2 = this.env.STORAGE_PROVIDER === 'R2';
+    // Presence of R2_ACCOUNT_ID / S3_REGION is checked at startup.
+    const region = isR2 ? 'auto' : (this.env.S3_REGION ?? '');
+    const defaultEndpoint = isR2
+      ? `https://${this.env.R2_ACCOUNT_ID ?? ''}.r2.cloudflarestorage.com`
+      : `https://s3.${region}.amazonaws.com`;
     return {
-      rootDir: this.env.STORAGE_ROOT_DIR,
+      provider: this.env.STORAGE_PROVIDER,
+      region,
+      endpoint: (this.env.STORAGE_ENDPOINT ?? defaultEndpoint).replace(/\/+$/, ''),
+      forcePathStyle: isR2,
+      accessKeyId: this.env.STORAGE_ACCESS_KEY_ID,
+      secretAccessKey: this.env.STORAGE_SECRET_ACCESS_KEY,
+      publicBucket: this.env.STORAGE_PUBLIC_BUCKET,
+      privateBucket: this.env.STORAGE_PRIVATE_BUCKET,
       publicBaseUrl: this.env.PUBLIC_FILES_BASE_URL,
-      privateBaseUrl: this.env.PRIVATE_FILES_BASE_URL,
-      urlSigningSecret: this.env.FILE_URL_SIGNING_SECRET,
       privateUrlTtlSeconds: this.env.PRIVATE_FILE_URL_TTL_SECONDS,
     };
   }

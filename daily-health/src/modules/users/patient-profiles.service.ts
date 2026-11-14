@@ -276,6 +276,11 @@ export class PatientProfilesService {
     );
   }
 
+  /** The user's own profile (linked to their account), or null. */
+  ownProfileOf(userId: string): Promise<PatientProfile | null> {
+    return this.prisma.patientProfile.findFirst({ where: { linkedUserId: userId, deletedAt: null } });
+  }
+
   /** By readable ID (staff search); deleted profiles too, for the audit trail. */
   findByPatientCode(patientCode: string): Promise<PatientProfile | null> {
     return this.prisma.patientProfile.findUnique({ where: { patientCode } });

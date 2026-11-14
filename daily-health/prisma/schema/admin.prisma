@@ -38,3 +38,28 @@ model StaffMember {
 
   @@schema("admin")
 }
+
+/// One row (id = 1): the look of the mobile app, set by admins in the panel.
+model AppSetting {
+  id              Int      @id @default(1)
+  /// "#0f5c5a"; white text on it must stay readable (checked by the API).
+  primaryColor    String   @default("#0f5c5a")
+  /// ref auth.User
+  updatedByUserId String?  @db.Uuid
+  updatedAt       DateTime @updatedAt @db.Timestamptz(3)
+
+  @@schema("admin")
+}
+
+/// Append-only history of primary colour changes.
+model AppSettingChange {
+  id              String   @id @default(uuid(7)) @db.Uuid
+  fromColor       String
+  toColor         String
+  /// ref auth.User
+  changedByUserId String   @db.Uuid
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([createdAt(sort: Desc)])
+  @@schema("admin")
+}

@@ -1,0 +1,209 @@
+// modules/community: the common community and the closed women's community
+// (erd.md → "কমিউনিটি ও ফোরাম"). User and provider ids are plain uuids (`ref …`).
+
+enum CommunitySpace {
+  COMMON
+  WOMEN
+
+  @@schema("community")
+}
+
+enum PostStatus {
+  PUBLISHED
+  HIDDEN
+  REMOVED
+
+  @@schema("community")
+}
+
+enum CommunityTarget {
+  POST
+  ANSWER
+
+  @@schema("community")
+}
+
+enum ReportReason {
+  SPAM
+  MISINFO
+  ABUSE
+  ADS
+  PRIVACY
+  OTHER
+
+  @@schema("community")
+}
+
+enum ReportStatus {
+  OPEN
+  RESOLVED
+  DISMISSED
+
+  @@schema("community")
+}
+
+enum WomenMembershipStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  REMOVED
+
+  @@schema("community")
+}
+
+enum BanScope {
+  ALL
+  WOMEN
+
+  @@schema("community")
+}
+
+model ForumCategory {
+  id          String         @id @default(uuid(7)) @db.Uuid
+  slug        String         @unique
+  nameBn      String
+  space       CommunitySpace
+  /// Blurred previews, no content in push text.
+  isSensitive Boolean        @default(false)
+  sortOrder   Int            @default(0)
+  isActive    Boolean        @default(true)
+
+  posts Post[]
+
+  @@index([space, isActive, sortOrder])
+  @@schema("community")
+}
+
+/// A question or post. Anonymous posts still keep authorUserId (moderation), never shown.
+model Post {
+  id                String         @id @default(uuid(7)) @db.Uuid
+  /// ref auth.User
+  authorUserId      String         @db.Uuid
+  /// ref providers.Provider: set when a verified provider wrote it.
+  providerId        String?        @db.Uuid
+  categoryId        String         @db.Uuid
+  /// Copied from the category, so space checks need no join.
+  space             CommunitySpace
+  title             String
+  body              String
+  isAnonymous       Boolean        @default(false)
+  /// "বেনামী সদস্য ৪৮২১": the name others see when anonymous.
+  anonAlias         String?
+  status            PostStatus     @default(PUBLISHED)
+  answerCount       Int            @default(0)
+  doctorAnswerCount Int            @default(0)
+  likeCount         Int            @default(0)
+  /// Moderator's note when hidden.
+  moderationNote    String?
+  createdAt         DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime       @updatedAt @db.Timestamptz(3)
+
+  category ForumCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  images   PostImage[]
+  answers  Answer[]
+
+  @@index([space, status, createdAt(sort: Desc)])
+  @@index([categoryId, createdAt(sort: Desc)])
+  @@index([authorUserId, createdAt(sort: Desc)])
+  @@schema("community")
+}
+
+/// Pictures are private (health-related): signed links only.
+model PostImage {
+  id         String   @id @default(uuid(7)) @db.Uuid
+  postId     String   @db.Uuid
+  storageKey String
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId, sortOrder])
+  @@schema("community")
+}
+
+model Answer {
+  id             String     @id @default(uuid(7)) @db.Uuid
+  postId         String     @db.Uuid
+  /// ref auth.User
+  authorUserId   String     @db.Uuid
+  /// ref providers.Provider: set = verified doctor answer.
+  providerId     String?    @db.Uuid
+  body           String
+  isAnonymous    Boolean    @default(false)
+  anonAlias      String?
+  isHighlighted  Boolean    @default(false)
+  status         PostStatus @default(PUBLISHED)
+  likeCount      Int        @default(0)
+  moderationNote String?
+  createdAt      DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime   @updatedAt @db.Timestamptz(3)
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId, status, createdAt])
+  @@schema("community")
+}
+
+/// One like per person per post or answer (polymorphic: no FK).
+model Reaction {
+  /// ref auth.User
+  userId     String          @db.Uuid
+  targetType CommunityTarget
+  targetId   String          @db.Uuid
+  createdAt  DateTime        @default(now()) @db.Timestamptz(3)
+
+  @@id([userId, targetType, targetId])
+  @@index([targetType, targetId])
+  @@schema("community")
+}
+
+model ContentReport {
+  id               String          @id @default(uuid(7)) @db.Uuid
+  /// ref auth.User
+  reporterUserId   String          @db.Uuid
+  targetType       CommunityTarget
+  targetId         String          @db.Uuid
+  reason           ReportReason
+  note             String?
+  status           ReportStatus    @default(OPEN)
+  /// ref auth.User (staff)
+  resolvedByUserId String?         @db.Uuid
+  resolvedAt       DateTime?       @db.Timestamptz(3)
+  createdAt        DateTime        @default(now()) @db.Timestamptz(3)
+
+  @@unique([reporterUserId, targetType, targetId])
+  @@index([status, createdAt])
+  @@index([targetType, targetId])
+  @@schema("community")
+}
+
+/// Membership of the women's community: asked once, decided by a moderator.
+model WomenCommunityMember {
+  /// ref auth.User
+  userId          String                @id @db.Uuid
+  status          WomenMembershipStatus @default(PENDING)
+  requestNote     String?
+  decisionNote    String?
+  /// ref auth.User (staff)
+  decidedByUserId String?               @db.Uuid
+  requestedAt     DateTime              @default(now()) @db.Timestamptz(3)
+  decidedAt       DateTime?             @db.Timestamptz(3)
+
+  @@index([status, requestedAt])
+  @@schema("community")
+}
+
+/// Banned from posting and answering (ALL) or from the women's community (WOMEN).
+model CommunityBan {
+  /// ref auth.User
+  userId         String   @db.Uuid
+  scope          BanScope
+  reason         String
+  /// ref auth.User (staff)
+  bannedByUserId String   @db.Uuid
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+
+  @@id([userId, scope])
+  @@schema("community")
+}

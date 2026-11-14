@@ -22,7 +22,7 @@ model HealthTip {
   id               String      @id @default(uuid(7)) @db.Uuid
   title            String
   body             String
-  /// Public WebP (storage/public), served from the CDN host.
+  /// Public WebP (public R2 bucket), served from its custom domain.
   imageStorageKey  String?
   category         TipCategory @default(GENERAL)
   /// ref providers.Provider: the doctor credited for it, optional.

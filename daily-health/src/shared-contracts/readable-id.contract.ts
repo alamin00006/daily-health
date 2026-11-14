@@ -165,12 +165,15 @@ export const REFERENCE_CODE_PREFIX = {
   PRESCRIPTION: 'RX',
   /** Emergency (SOS) requests. */
   EMERGENCY: 'EM',
+  /** HealthStore orders. */
+  ORDER: 'OD',
 } as const;
 export type ReferenceCodeKind = keyof typeof REFERENCE_CODE_PREFIX;
 
 export const BOOKING_CODE_PATTERN = /^BK-\d{4}-\d{4,}$/;
 export const PAYMENT_INVOICE_PATTERN = /^RC-\d{4}-\d{4,}$/;
 export const PRESCRIPTION_CODE_PATTERN = /^RX-\d{4}-\d{4,}$/;
+export const ORDER_CODE_PATTERN = /^OD-\d{4}-\d{4,}$/;
 
 export function formatReferenceCode(
   kind: ReferenceCodeKind,

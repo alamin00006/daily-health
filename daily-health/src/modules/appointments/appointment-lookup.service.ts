@@ -41,6 +41,16 @@ export class AppointmentLookupService {
     });
   }
 
+  /** A provider's confirmed or completed bookings since a time, newest first (diet plans). */
+  async recentForProvider(providerId: string, since: Date, take = 50): Promise<AppointmentFacts[]> {
+    const rows = await this.prisma.appointment.findMany({
+      where: { providerId, status: { in: ['CONFIRMED', 'COMPLETED'] }, scheduledAt: { gte: since } },
+      orderBy: { scheduledAt: 'desc' },
+      take,
+    });
+    return rows.map(toFacts);
+  }
+
   async findManyByIds(ids: string[]): Promise<Map<string, AppointmentFacts>> {
     if (ids.length === 0) return new Map();
     const rows = await this.prisma.appointment.findMany({

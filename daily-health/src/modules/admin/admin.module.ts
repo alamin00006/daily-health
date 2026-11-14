@@ -8,6 +8,8 @@ import { PaymentsModule } from '../payments/payments.module.js';
 import { UsersModule } from '../users/users.module.js';
 import { AdminDashboardService } from './admin-dashboard.service.js';
 import { AdminController } from './admin.controller.js';
+import { AdminAppConfigController, AppConfigController } from './app-config.controller.js';
+import { AppConfigService } from './app-config.service.js';
 import { AuditLogWriterService } from './audit-log-writer.service.js';
 import { AuditLogsService } from './audit-logs.service.js';
 import { StaffAndUsersService } from './staff-and-users.service.js';
@@ -29,7 +31,13 @@ import { StaffModule } from './staff.module.js';
     ContentModule,
     StaffModule,
   ],
-  controllers: [AdminController],
-  providers: [AuditLogWriterService, AuditLogsService, StaffAndUsersService, AdminDashboardService],
+  controllers: [AdminController, AppConfigController, AdminAppConfigController],
+  providers: [
+    AuditLogWriterService,
+    AuditLogsService,
+    StaffAndUsersService,
+    AdminDashboardService,
+    AppConfigService,
+  ],
 })
 export class AdminModule {}

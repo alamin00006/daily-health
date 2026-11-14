@@ -1,11 +1,11 @@
 import { Global, Module } from '@nestjs/common';
-import { LocalDiskStorageService } from './local-disk-storage.service.js';
+import { S3CompatibleStorageService } from './s3-compatible-storage.service.js';
 import { StorageService } from './storage.service.js';
 
-/** Swap `useClass` to an S3 implementation after ~10,000 users (CLAUDE.md §5). */
+/** Files in Cloudflare R2 or AWS S3 (STORAGE_PROVIDER; CLAUDE.md §5). */
 @Global()
 @Module({
-  providers: [{ provide: StorageService, useClass: LocalDiskStorageService }],
+  providers: [{ provide: StorageService, useClass: S3CompatibleStorageService }],
   exports: [StorageService],
 })
 export class StorageModule {}

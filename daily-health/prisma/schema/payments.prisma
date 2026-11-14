@@ -6,6 +6,8 @@ enum PaymentPurpose {
   APPOINTMENT
   QUICK_CONSULT
   DIET_PLAN
+  /// A HealthStore order (shop module).
+  ORDER
 
   @@schema("payments")
 }

@@ -8,6 +8,8 @@ export const paymentPurposeSchema = z.enum([
   'APPOINTMENT',
   'QUICK_CONSULT',
   'DIET_PLAN',
+  /** A HealthStore order. */
+  'ORDER',
 ]);
 export type PaymentPurpose = z.infer<typeof paymentPurposeSchema>;
 

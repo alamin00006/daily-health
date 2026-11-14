@@ -250,6 +250,11 @@ export class ProviderDirectoryService {
     return provider;
   }
 
+  /** The account's provider profile if it is verified (community "verified doctor" answers). */
+  findVerifiedByUserId(userId: string): Promise<Provider | null> {
+    return this.prisma.provider.findFirst({ where: { userId, verificationStatus: 'VERIFIED' } });
+  }
+
   /** The caller's own provider profile (panel routes). */
   async requireOwn(userId: string): Promise<Provider> {
     const provider = await this.prisma.provider.findUnique({

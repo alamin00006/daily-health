@@ -8,6 +8,7 @@ import { NotificationsModule } from '../notifications/notifications.module.js';
 import { RecordsModule } from '../records/records.module.js';
 import { UsersModule } from '../users/users.module.js';
 import { PatientPrescriptionsService } from './patient-prescriptions.service.js';
+import { PrescriptionLookupService } from './prescription-lookup.service.js';
 import { PrescriptionViewsService } from './prescription-views.service.js';
 import {
   ProfilePrescriptionsController,
@@ -32,6 +33,12 @@ import { ProviderPrescriptionsService } from './provider-prescriptions.service.j
     NotificationsModule,
   ],
   controllers: [ProviderPrescriptionsController, ProfilePrescriptionsController],
-  providers: [PrescriptionViewsService, ProviderPrescriptionsService, PatientPrescriptionsService],
+  providers: [
+    PrescriptionViewsService,
+    ProviderPrescriptionsService,
+    PatientPrescriptionsService,
+    PrescriptionLookupService,
+  ],
+  exports: [PrescriptionLookupService],
 })
 export class PrescriptionsModule {}

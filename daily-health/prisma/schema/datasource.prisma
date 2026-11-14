@@ -21,5 +21,5 @@ datasource db {
   // One Postgres schema per NestJS module. `public` is intentionally left out:
   // it holds only the PostGIS / pg_trgm / pgcrypto extension objects, which
   // Prisma must not manage. `core` holds infrastructure tables (readable ID counters).
-  schemas  = ["core", "auth", "users", "health", "records", "providers", "appointments", "consultation", "chat", "prescriptions", "medicine", "nutrition", "womens_health", "community", "payments", "notifications", "emergency", "content", "admin"]
+  schemas  = ["core", "auth", "users", "health", "records", "providers", "appointments", "consultation", "chat", "prescriptions", "medicine", "nutrition", "womens_health", "community", "payments", "notifications", "emergency", "content", "admin", "shop"]
 }

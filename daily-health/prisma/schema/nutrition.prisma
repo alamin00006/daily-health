@@ -1,0 +1,100 @@
+// modules/nutrition: diet plans from a nutritionist visit and the patient's daily log
+// (erd.md → "পুষ্টিবিদ ও ডায়েট চার্ট"). Patient, provider and appointment ids are plain
+// uuids (`ref …`).
+
+enum MealType {
+  BREAKFAST
+  LUNCH
+  SNACKS
+  DINNER
+
+  @@schema("nutrition")
+}
+
+enum DietPlanStatus {
+  DRAFT
+  ACTIVE
+  ENDED
+
+  @@schema("nutrition")
+}
+
+/// One ACTIVE plan per patient (partial unique index); publishing a new one ends the old.
+model DietPlan {
+  id                String         @id @default(uuid(7)) @db.Uuid
+  /// ref users.PatientProfile
+  patientId         String         @db.Uuid
+  /// ref providers.Provider
+  providerId        String         @db.Uuid
+  /// ref appointments.Appointment (the visit it came from; a diet plan is paid as an appointment)
+  appointmentId     String         @unique @db.Uuid
+  title             String
+  calorieTargetKcal Int
+  waterTargetMl     Int
+  startDate         DateTime       @db.Date
+  endDate           DateTime?      @db.Date
+  status            DietPlanStatus @default(DRAFT)
+  notes             String?
+  publishedAt       DateTime?      @db.Timestamptz(3)
+  createdAt         DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime       @updatedAt @db.Timestamptz(3)
+
+  meals      DietPlanMeal[]
+  intakeLogs IntakeLog[]
+
+  @@index([patientId, status])
+  @@index([providerId, createdAt(sort: Desc)])
+  @@schema("nutrition")
+}
+
+model DietPlanMeal {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  dietPlanId  String   @db.Uuid
+  mealType    MealType
+  /// Asia/Dhaka wall time.
+  time        DateTime @db.Time(0)
+  description String
+  approxKcal  Int?
+  sortOrder   Int      @default(0)
+
+  plan   DietPlan    @relation(fields: [dietPlanId], references: [id], onDelete: Cascade)
+  checks MealCheck[]
+
+  @@index([dietPlanId, sortOrder])
+  @@schema("nutrition")
+}
+
+/// The patient's day: water and calories (from followed meals). One row per patient per day.
+model IntakeLog {
+  id           String    @id @default(uuid(7)) @db.Uuid
+  /// ref users.PatientProfile
+  patientId    String    @db.Uuid
+  dietPlanId   String?   @db.Uuid
+  date         DateTime  @db.Date
+  caloriesKcal Int       @default(0)
+  waterMl      Int       @default(0)
+  /// ref auth.User: who last changed it.
+  updatedByUserId String? @db.Uuid
+  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @db.Timestamptz(3)
+
+  plan   DietPlan?   @relation(fields: [dietPlanId], references: [id], onDelete: SetNull)
+  checks MealCheck[]
+
+  @@unique([patientId, date])
+  @@schema("nutrition")
+}
+
+model MealCheck {
+  id          String  @id @default(uuid(7)) @db.Uuid
+  intakeLogId String  @db.Uuid
+  mealId      String  @db.Uuid
+  followed    Boolean
+  note        String?
+
+  log  IntakeLog    @relation(fields: [intakeLogId], references: [id], onDelete: Cascade)
+  meal DietPlanMeal @relation(fields: [mealId], references: [id], onDelete: Cascade)
+
+  @@unique([intakeLogId, mealId])
+  @@schema("nutrition")
+}

@@ -31,6 +31,12 @@ const commaSeparatedList = z
   );
 
 /** Only the literal strings "true"/"false" (z.coerce.boolean turns "false" into true). */
+/** Blank counts as not set. */
+const optionalText = z
+  .string()
+  .optional()
+  .transform((value) => value?.trim() || undefined);
+
 const booleanString = z
   .enum(['true', 'false'])
   .transform((value) => value === 'true');
@@ -113,11 +119,35 @@ export const environmentVariablesSchema = z
     ENCRYPTION_KEYS: encryptionKeysSchema,
     ENCRYPTION_ACTIVE_KEY_VERSION: z.coerce.number().int().min(1).max(255),
 
-    STORAGE_ROOT_DIR: z.string().min(1).default('./storage'),
+    /**
+     * Where files live (CLAUDE.md §5). Both speak the S3 API; switching is these
+     * variables plus copying the two buckets, no code change.
+     */
+    STORAGE_PROVIDER: z.enum(['R2', 'S3']).default('R2'),
+    /** R2 only: the Cloudflare account id (builds the endpoint). */
+    R2_ACCOUNT_ID: optionalText.pipe(
+      z.string().regex(/^[0-9a-f]{32}$/i, '32 hex characters').optional(),
+    ),
+    /** S3 only: the bucket region, e.g. ap-southeast-1 (Singapore) or ap-south-1 (Mumbai). */
+    S3_REGION: optionalText.pipe(z.string().regex(/^[a-z]{2}(-[a-z]+)+-\d$/, 'an AWS region').optional()),
+    /** R2: API token with Object Read & Write on both buckets. S3: an IAM user's access key. */
+    STORAGE_ACCESS_KEY_ID: z.string().min(16),
+    STORAGE_SECRET_ACCESS_KEY: z.string().min(32),
+    /** No dots in the names (virtual-hosted S3 URLs need them to match the TLS certificate). */
+    STORAGE_PUBLIC_BUCKET: z.string().regex(/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/, 'lowercase letters, digits, hyphens'),
+    STORAGE_PRIVATE_BUCKET: z.string().regex(/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/, 'lowercase letters, digits, hyphens'),
+    /**
+     * Optional endpoint override. Defaults: https://<account>.r2.cloudflarestorage.com (R2),
+     * https://s3.<region>.amazonaws.com (S3). For an EU R2 bucket:
+     * https://<account>.eu.r2.cloudflarestorage.com.
+     */
+    STORAGE_ENDPOINT: optionalText.pipe(z.url({ protocol: /^https?$/ }).optional()),
+    /**
+     * The public bucket's CDN domain, e.g. https://cdn.example.com: the R2 custom domain,
+     * or a CloudFront distribution in front of the S3 bucket.
+     */
     PUBLIC_FILES_BASE_URL: z.url({ protocol: /^https?$/ }),
-    PRIVATE_FILES_BASE_URL: z.url({ protocol: /^https?$/ }),
-    /** Shared with Nginx `secure_link_md5`. */
-    FILE_URL_SIGNING_SECRET: z.string().min(32),
+    /** How long a presigned private file link works. */
     PRIVATE_FILE_URL_TTL_SECONDS: z.coerce
       .number()
       .int()
@@ -228,6 +258,16 @@ export const environmentVariablesSchema = z
         path: ['AGORA_APP_CERTIFICATE'],
         message: 'set both AGORA_APP_ID and AGORA_APP_CERTIFICATE, or neither',
       });
+    }
+    if (env.STORAGE_PROVIDER === 'R2' && !env.R2_ACCOUNT_ID && !env.STORAGE_ENDPOINT) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['R2_ACCOUNT_ID'],
+        message: 'required when STORAGE_PROVIDER=R2 (or set STORAGE_ENDPOINT)',
+      });
+    }
+    if (env.STORAGE_PROVIDER === 'S3' && !env.S3_REGION) {
+      ctx.addIssue({ code: 'custom', path: ['S3_REGION'], message: 'required when STORAGE_PROVIDER=S3' });
     }
     if (!env.ENCRYPTION_KEYS.has(env.ENCRYPTION_ACTIVE_KEY_VERSION)) {
       ctx.addIssue({

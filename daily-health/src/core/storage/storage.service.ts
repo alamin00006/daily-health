@@ -1,5 +1,6 @@
 /**
- * `public`: served by Nginx with long cache headers (health tip images, avatars of doctors).
+ * `public`: the public bucket, served from its CDN domain with long cache headers
+ *   (health tip images, product pictures, avatars of doctors).
  * `private`: lab reports, prescriptions, patient photos; served only via expiring signed URLs.
  */
 export type FileVisibility = 'public' | 'private';
@@ -40,7 +41,7 @@ export interface FileUrlOptions {
 /**
  * The only way the app touches files (CLAUDE.md §5). The DB stores just the
  * returned `storageKey` (e.g. `private/2026/11/<uuid>.webp`), never a URL, so
- * moving from local disk to S3 later is a provider swap with no data change.
+ * the host (Cloudflare R2 today, AWS S3 by env) can change with no data change.
  *
  * Abstract class (not an interface) so it can be the Nest injection token.
  * Callers must check permissions before asking for a private URL.

@@ -16,7 +16,7 @@ import { AppConfigService } from '../../src/core/config/app-config.service.js';
 import { parseEnvironmentVariables } from '../../src/core/config/environment-variables.schema.js';
 import { ColumnEncryptionService } from '../../src/core/crypto/column-encryption.service.js';
 import { PrismaService } from '../../src/core/prisma/prisma.service.js';
-import { LocalDiskStorageService } from '../../src/core/storage/local-disk-storage.service.js';
+import { S3CompatibleStorageService } from '../../src/core/storage/s3-compatible-storage.service.js';
 import { StoredUploadsService } from '../../src/core/uploads/stored-uploads.service.js';
 import { UploadedFileProcessorService } from '../../src/core/uploads/uploaded-file-processor.service.js';
 import {
@@ -40,6 +40,8 @@ import {
   removeStaffContentDemo,
   seedStaffContentDemo,
 } from './seed-staff-content-demo.js';
+import { removeShopDemo, seedShopDemo } from './seed-shop-demo.js';
+import { removeCommunityDemo, seedCommunityDemo } from './seed-community-demo.js';
 import {
   seedDemoMedicationPlans,
   seedMedicineCatalog,
@@ -63,7 +65,7 @@ const config = new AppConfigService(parseEnvironmentVariables(process.env));
 const prisma = new PrismaService(config);
 const encryption = new ColumnEncryptionService(config);
 const storedUploads = new StoredUploadsService(
-  new LocalDiskStorageService(config),
+  new S3CompatibleStorageService(config),
   config,
 );
 const uploadProcessor = new UploadedFileProcessorService();
@@ -115,6 +117,8 @@ async function removePreviousDemoData(): Promise<void> {
   });
   const profileIds = profiles.map((profile) => profile.id);
   await removeStaffContentDemo(prisma, profileIds);
+  await removeShopDemo(prisma, userIds);
+  await removeCommunityDemo(prisma, userIds);
   await removeDoctorsDemo(prisma, profileIds);
 
   const files = await prisma.medicalFile.findMany({
@@ -679,6 +683,8 @@ async function seed(): Promise<void> {
   });
 
   const staffLines = await seedStaffContentDemo(prisma, readableIds, { pinHash, fatherId: father.id });
+  staffLines.push(...(await seedShopDemo(prisma)));
+  staffLines.push(...(await seedCommunityDemo(prisma, { rahimId, nasrinId })));
 
   // The father's last chamber visit got a prescription (one tap → medicine alarms in the app).
   const visit = await prisma.appointment.findFirst({

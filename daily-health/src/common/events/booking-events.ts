@@ -5,7 +5,7 @@
  */
 export const PAYMENT_SUCCEEDED_EVENT = 'payment.succeeded';
 export interface PaymentSucceededEvent {
-  purpose: 'APPOINTMENT' | 'QUICK_CONSULT' | 'DIET_PLAN';
+  purpose: 'APPOINTMENT' | 'QUICK_CONSULT' | 'DIET_PLAN' | 'ORDER';
   referenceId: string;
   paymentId: string | null;
 }
@@ -32,7 +32,7 @@ export interface AppointmentEvent {
  */
 export const PAYMENT_REFUND_REQUESTED_EVENT = 'payment.refund-requested';
 export interface PaymentRefundRequestedEvent {
-  purpose: 'APPOINTMENT' | 'QUICK_CONSULT' | 'DIET_PLAN';
+  purpose: 'APPOINTMENT' | 'QUICK_CONSULT' | 'DIET_PLAN' | 'ORDER';
   referenceId: string;
   /** Bangla, shown to the payer and the admin. */
   reason: string;
@@ -44,7 +44,7 @@ export interface PaymentRefundRequestedEvent {
  */
 export const PAYMENT_PROVIDER_ASSIGNED_EVENT = 'payment.provider-assigned';
 export interface PaymentProviderAssignedEvent {
-  purpose: 'APPOINTMENT' | 'QUICK_CONSULT' | 'DIET_PLAN';
+  purpose: 'APPOINTMENT' | 'QUICK_CONSULT' | 'DIET_PLAN' | 'ORDER';
   referenceId: string;
   providerId: string;
 }
