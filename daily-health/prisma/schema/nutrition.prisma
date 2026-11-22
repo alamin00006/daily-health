@@ -66,17 +66,17 @@ model DietPlanMeal {
 
 /// The patient's day: water and calories (from followed meals). One row per patient per day.
 model IntakeLog {
-  id           String    @id @default(uuid(7)) @db.Uuid
+  id              String   @id @default(uuid(7)) @db.Uuid
   /// ref users.PatientProfile
-  patientId    String    @db.Uuid
-  dietPlanId   String?   @db.Uuid
-  date         DateTime  @db.Date
-  caloriesKcal Int       @default(0)
-  waterMl      Int       @default(0)
+  patientId       String   @db.Uuid
+  dietPlanId      String?  @db.Uuid
+  date            DateTime @db.Date
+  caloriesKcal    Int      @default(0)
+  waterMl         Int      @default(0)
   /// ref auth.User: who last changed it.
-  updatedByUserId String? @db.Uuid
-  createdAt    DateTime  @default(now()) @db.Timestamptz(3)
-  updatedAt    DateTime  @updatedAt @db.Timestamptz(3)
+  updatedByUserId String?  @db.Uuid
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(3)
 
   plan   DietPlan?   @relation(fields: [dietPlanId], references: [id], onDelete: SetNull)
   checks MealCheck[]

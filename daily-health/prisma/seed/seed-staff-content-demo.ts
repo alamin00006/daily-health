@@ -93,14 +93,14 @@ export async function removeStaffContentDemo(prisma: PrismaService, patientIds: 
 export async function seedStaffContentDemo(
   prisma: PrismaService,
   readableIds: ReadableIdService,
-  input: { pinHash: string; fatherId: string },
+  input: { passwordHash: string; fatherId: string },
 ): Promise<string[]> {
   const admin = await prisma.user.findUniqueOrThrow({ where: { email: PROVIDER_DEMO_EMAILS.admin } });
   const moderator = await prisma.user.create({
     data: {
       email: STAFF_DEMO_EMAILS.moderator,
       emailVerifiedAt: new Date(),
-      pinHash: input.pinHash,
+      passwordHash: input.passwordHash,
       role: 'MODERATOR',
     },
   });

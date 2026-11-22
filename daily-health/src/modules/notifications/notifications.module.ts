@@ -12,6 +12,9 @@ import {
   REMINDERS_QUEUE,
   ReminderSchedulerService,
 } from './reminder-scheduler.service.js';
+import { AppConfigService } from '../../core/config/app-config.service.js';
+import { AuthOtpSmsListener } from './sms/auth-otp-sms.listener.js';
+import { BulkSmsBdSenderService } from './sms/bulksmsbd-sms-sender.service.js';
 import { SmsSender } from './sms/sms-sender.js';
 import { UnconfiguredSmsSenderService } from './sms/unconfigured-sms-sender.service.js';
 
@@ -29,9 +32,16 @@ import { UnconfiguredSmsSenderService } from './sms/unconfigured-sms-sender.serv
     NotificationInboxService,
     ReminderSchedulerService,
     ReminderDispatchProcessor,
+    AuthOtpSmsListener,
     { provide: PushSender, useClass: ExpoPushSenderService },
-    // Swap for the chosen gateway once decided (CLAUDE.md §3).
-    { provide: SmsSender, useClass: UnconfiguredSmsSenderService },
+    // BulkSMSBD once SMS_API_KEY_VALUE and SMS_SENDER_ID are set; otherwise SMS are recorded as not sent.
+    {
+      provide: SmsSender,
+      inject: [AppConfigService],
+      useFactory: (config: AppConfigService): SmsSender =>
+        config.sms ? new BulkSmsBdSenderService(config)
+          : new UnconfiguredSmsSenderService(),
+    },
   ],
   exports: [
     NotificationPreferencesService,

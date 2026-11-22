@@ -3,7 +3,7 @@ import { DeliveryFailure } from '../notifications-error-codes.js';
 import { SmsSender, type SmsResult } from './sms-sender.js';
 
 /**
- * Used until an SMS gateway is chosen (CLAUDE.md §3 "Open decisions").
+ * Used while SMS_API_KEY_VALUE / SMS_SENDER_ID are not set.
  * Sends nothing and reports SMS_PROVIDER_NOT_CONFIGURED, so the Notification
  * row honestly shows FAILED instead of pretending the SMS went out.
  */

@@ -3,7 +3,7 @@
 // sessions (enough female doctors for the women's-health queue), one doctor
 // waiting for verification, an admin, and the family's appointments.
 //
-// Provider accounts use the same demo PIN. Names, BMDC numbers and hospitals
+// Provider accounts use the same demo password. Names, BMDC numbers and hospitals
 // are sample data for development only.
 import { Prisma } from '../../src/generated/prisma/client.js';
 import type { PrismaService } from '../../src/core/prisma/prisma.service.js';
@@ -292,7 +292,7 @@ const PROVIDERS: ProviderSeed[] = [
 ];
 
 export interface DoctorsDemoInput {
-  pinHash: string;
+  passwordHash: string;
   /** PLATFORM_FEE_PERCENT, for the seeded earnings. */
   platformFeePercent: number;
   fatherId: string;
@@ -417,7 +417,7 @@ export async function seedDoctorsDemo(
     data: {
       email: PROVIDER_DEMO_EMAILS.admin,
       emailVerifiedAt: new Date(),
-      pinHash: input.pinHash,
+      passwordHash: input.passwordHash,
       role: 'ADMIN',
     },
   });
@@ -430,7 +430,7 @@ export async function seedDoctorsDemo(
       data: {
         email: PROVIDER_DEMO_EMAILS[seed.key],
         emailVerifiedAt: new Date(),
-        pinHash: input.pinHash,
+        passwordHash: input.passwordHash,
         role: seed.type,
       },
     });

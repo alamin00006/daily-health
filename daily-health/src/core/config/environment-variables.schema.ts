@@ -172,13 +172,13 @@ export const environmentVariablesSchema = z
       .optional()
       .transform((value) => value?.trim() || undefined),
 
-    /** Outgoing email (OTP codes, invites) via SMTP / nodemailer. Mailpit locally. */
-    SMTP_HOST: z.string().min(1),
-    SMTP_PORT: z.coerce.number().int().min(1).max(65535),
-    /** true = TLS from the start (port 465); false = STARTTLS if offered (587/25/1025). */
-    SMTP_SECURE: booleanString.default(false),
-    SMTP_USER: z.string().optional(),
-    SMTP_PASSWORD: z.string().optional(),
+    /**
+     * Outgoing email (OTP codes, invites) through nodemailer's well-known service
+     * (default Gmail): SMTP_USER is the address, SMTP_PASSWORD a Google app password.
+     */
+    SMTP_SERVICE: z.string().trim().min(1).default('gmail'),
+    SMTP_USER: z.string().trim().min(3),
+    SMTP_PASSWORD: z.string().trim().min(1),
     /** e.g. "দৈনিক স্বাস্থ্য <no-reply@example.com>" */
     MAIL_FROM: z.string().min(3),
 
@@ -199,6 +199,26 @@ export const environmentVariablesSchema = z
      * Payment aggregator in use (bKash, Nagad, Rocket and cards come through it).
      * Switching is this one variable; both gateways are implemented.
      */
+    /**
+     * SMS through BulkSMSBD. With both the key and the sender ID set SMS go out; with
+     * neither, nothing is sent and SMS notifications are stored as FAILED
+     * (SMS_PROVIDER_NOT_CONFIGURED).
+     */
+    SMS_API_KEY_VALUE: z
+      .string()
+      .optional()
+      .transform((value) => value?.trim() || undefined),
+    SMS_SENDER_ID: z
+      .string()
+      .optional()
+      .transform((value) => value?.trim() || undefined),
+    /** Gateway host name only, no scheme or path. */
+    SMS_API_HOST_SITE: z
+      .string()
+      .trim()
+      .regex(/^[a-z0-9.-]+$/i, 'a host name such as bulksmsbd.net')
+      .default('bulksmsbd.net'),
+
     PAYMENT_GATEWAY: z.enum(['SHURJOPAY', 'SSLCOMMERZ']).default('SHURJOPAY'),
     /**
      * Public base of this API as the gateways (and the phone's browser) reach
@@ -234,11 +254,11 @@ export const environmentVariablesSchema = z
     AGORA_TOKEN_TTL_SECONDS: z.coerce.number().int().min(600).max(86_400).default(7200),
   })
   .superRefine((env, ctx) => {
-    if (Boolean(env.SMTP_USER) !== Boolean(env.SMTP_PASSWORD)) {
+    if (Boolean(env.SMS_API_KEY_VALUE) !== Boolean(env.SMS_SENDER_ID)) {
       ctx.addIssue({
         code: 'custom',
-        path: ['SMTP_PASSWORD'],
-        message: 'set both SMTP_USER and SMTP_PASSWORD, or neither',
+        path: ['SMS_SENDER_ID'],
+        message: 'set both SMS_API_KEY_VALUE and SMS_SENDER_ID, or neither',
       });
     }
     const gatewayCredentials =

@@ -27,7 +27,7 @@ import {
   type VitalContext,
   type VitalType,
 } from '../../src/generated/prisma/client.js';
-import { PinHashingService } from '../../src/modules/auth/pin-hashing.service.js';
+import { PasswordHashingService } from '../../src/modules/auth/password-hashing.service.js';
 import { computeVitalStatus } from '../../src/modules/health-profile/vital-status.js';
 import { ReadableIdService } from '../../src/core/readable-ids/readable-id.service.js';
 import { addDays, dhakaDate, stringToDateColumn } from '../../src/common/time/dhaka-time.js';
@@ -48,8 +48,8 @@ import {
   seedMedicineCatalog,
 } from './seed-medicine-demo.js';
 
-/** Same PIN for every demo account; never use these accounts outside dev/staging. */
-export const DEMO_PIN = '274816';
+/** Same password for every demo account; never use these accounts outside dev/staging. */
+export const DEMO_PASSWORD = '274816';
 
 const DEMO_EMAILS = {
   rahim: 'rahim.demo@example.com',
@@ -200,12 +200,12 @@ async function removePreviousDemoData(): Promise<void> {
   ]);
 }
 
-async function createAccount(email: string, pinHash: string): Promise<string> {
+async function createAccount(email: string, passwordHash: string): Promise<string> {
   const user = await prisma.user.create({
     data: {
       email,
       emailVerifiedAt: new Date(),
-      pinHash,
+      passwordHash,
       role: 'PATIENT',
       isGuest: false,
     },
@@ -515,9 +515,9 @@ async function seed(): Promise<void> {
 
   await removePreviousDemoData();
 
-  const pinHash = await new PinHashingService().hash(DEMO_PIN);
-  const rahimId = await createAccount(DEMO_EMAILS.rahim, pinHash);
-  const nasrinId = await createAccount(DEMO_EMAILS.nasrin, pinHash);
+  const passwordHash = await new PasswordHashingService().hash(DEMO_PASSWORD);
+  const rahimId = await createAccount(DEMO_EMAILS.rahim, passwordHash);
+  const nasrinId = await createAccount(DEMO_EMAILS.nasrin, passwordHash);
 
   // Each child has their own profile.
   const rahim = await createProfile(rahimId, 'SELF', {
@@ -574,7 +574,7 @@ async function seed(): Promise<void> {
       name: 'উচ্চ রক্তচাপ',
       kind: 'CHRONIC',
       since: '2015-06-01',
-      note: 'অ্যামলোডিপিন ৫ মি.গ্রা. দিনে দুবার',
+      note: 'অ্যামলোডিপাসওয়ার্ড ৫ মি.গ্রা. দিনে দুবার',
     },
     {
       name: 'ডায়াবেটিস (টাইপ ২)',
@@ -703,7 +703,7 @@ async function seed(): Promise<void> {
   });
 
   const providerLines = await seedDoctorsDemo(prisma, readableIds, {
-    pinHash,
+    passwordHash,
     platformFeePercent: config.payments.platformFeePercent,
     fatherId: father.id,
     rahimProfileId: rahim.id,
@@ -711,7 +711,7 @@ async function seed(): Promise<void> {
     nasrinId,
   });
 
-  const staffLines = await seedStaffContentDemo(prisma, readableIds, { pinHash, fatherId: father.id });
+  const staffLines = await seedStaffContentDemo(prisma, readableIds, { passwordHash, fatherId: father.id });
   staffLines.push(...(await seedShopDemo(prisma)));
   staffLines.push(...(await seedCommunityDemo(prisma, { rahimId, nasrinId })));
   staffLines.push(...(await seedNutritionDemo(prisma, readableIds, { rahimId, rahimProfileId: rahim.id })));
@@ -759,7 +759,7 @@ async function seed(): Promise<void> {
     where: { id: { in: [rahim.id, nasrin.id, father.id] } },
     select: { fullName: true, patientCode: true },
   });
-  console.log('Demo data seeded. Log in with PIN', DEMO_PIN);
+  console.log('Demo data seeded. Log in with password', DEMO_PASSWORD);
   console.log(
     `  ${DEMO_EMAILS.rahim}   owner of his own and his father's profile`,
   );
@@ -770,9 +770,9 @@ async function seed(): Promise<void> {
   console.log(
     `  Father's QR card: ${config.healthCardBaseUrl}/${fatherCardToken}`,
   );
-  console.log('Providers and staff (web panel), same PIN:');
+  console.log('Providers and staff (web panel), same password:');
   for (const line of providerLines) console.log(line);
-  console.log('Staff (web panel), same PIN:');
+  console.log('Staff (web panel), same password:');
   for (const line of staffLines) console.log(line);
 }
 

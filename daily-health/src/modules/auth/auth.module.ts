@@ -7,7 +7,7 @@ import { AuthSessionsService } from './auth-sessions.service.js';
 import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
 import { OtpCodesService } from './otp-codes.service.js';
-import { PinHashingService } from './pin-hashing.service.js';
+import { PasswordHashingService } from './password-hashing.service.js';
 import { UserAccountsService } from './user-accounts.service.js';
 import { UserContactPointsService } from './user-contact-points.service.js';
 import { VerificationTokensService } from './verification-tokens.service.js';
@@ -28,7 +28,7 @@ import { VerificationTokensService } from './verification-tokens.service.js';
     AuthService,
     AuthSessionsService,
     OtpCodesService,
-    PinHashingService,
+    PasswordHashingService,
     VerificationTokensService,
     UserAccountsService,
     UserContactPointsService,

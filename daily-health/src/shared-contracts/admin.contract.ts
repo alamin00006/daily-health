@@ -53,7 +53,7 @@ export interface AuditLogResponse {
 // ---------------------------------------------------------------------------
 
 export const listAdminUsersQuerySchema = paginationQuerySchema.extend({
-  /** Part of the email. */
+  /** Part of the email, or digits of the phone number. */
   q: z.string().trim().min(2).max(100).optional(),
   role: z.enum(['PATIENT', 'DOCTOR', 'NUTRITIONIST', 'PHYSIO', 'MODERATOR', 'ADMIN']).optional(),
   status: z.enum(['ACTIVE', 'SUSPENDED']).optional(),
@@ -63,6 +63,8 @@ export type ListAdminUsersQuery = z.infer<typeof listAdminUsersQuerySchema>;
 export interface AdminUserResponse {
   id: string;
   email: string | null;
+  /** E.164; set for accounts opened with a phone number. */
+  phone: string | null;
   role: UserRole;
   suspended: boolean;
   emailVerified: boolean;

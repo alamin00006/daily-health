@@ -1,12 +1,13 @@
 import { z } from 'zod';
 import {
+  bangladeshPhoneSchema,
   deviceInfoSchema,
   emailSchema,
   otpCodeSchema,
-  pinSchema,
+  passwordSchema,
 } from './common-fields.contract.js';
 
-export const otpPurposeSchema = z.enum(['SIGNUP', 'LOGIN', 'RESET_PIN']);
+export const otpPurposeSchema = z.enum(['SIGNUP', 'LOGIN', 'RESET_PASSWORD']);
 export type OtpPurpose = z.infer<typeof otpPurposeSchema>;
 
 export const userRoleSchema = z.enum([
@@ -19,26 +20,35 @@ export const userRoleSchema = z.enum([
 ]);
 export type UserRole = z.infer<typeof userRoleSchema>;
 
+/**
+ * Who is signing in: an email address (code by email) or a Bangladeshi mobile number
+ * (code by SMS). Exactly one of the two. The phone is normalised to +8801XXXXXXXXX.
+ */
+const accountIdFields = {
+  email: emailSchema.optional(),
+  phone: bangladeshPhoneSchema.optional(),
+};
+const oneAccountId = (body: { email?: string; phone?: string }) =>
+  Boolean(body.email) !== Boolean(body.phone);
+const oneAccountIdIssue = { path: ['email'], message: 'Give either email or phone' };
+
 // POST /api/v1/auth/otp/send
-export const sendOtpRequestSchema = z.object({
-  email: emailSchema,
-  purpose: otpPurposeSchema,
-});
+export const sendOtpRequestSchema = z
+  .object({ ...accountIdFields, purpose: otpPurposeSchema })
+  .refine(oneAccountId, oneAccountIdIssue);
 export type SendOtpRequest = z.infer<typeof sendOtpRequestSchema>;
-/** Same response whether or not the email has an account (no account enumeration). */
+/** Same response whether or not the email / phone has an account (no account enumeration). */
 export interface SendOtpResponse {
   expiresInSec: number;
   resendAfterSec: number;
 }
 
 // POST /api/v1/auth/otp/verify
-export const verifyOtpRequestSchema = z.object({
-  email: emailSchema,
-  purpose: otpPurposeSchema,
-  code: otpCodeSchema,
-});
+export const verifyOtpRequestSchema = z
+  .object({ ...accountIdFields, purpose: otpPurposeSchema, code: otpCodeSchema })
+  .refine(oneAccountId, oneAccountIdIssue);
 export type VerifyOtpRequest = z.infer<typeof verifyOtpRequestSchema>;
-/** Single-use proof that the email was verified; spent by signup / OTP login / PIN reset. */
+/** Single-use proof that the email / phone was verified; spent by signup / OTP login / password reset. */
 export interface VerifyOtpResponse {
   verificationToken: string;
   expiresInSec: number;
@@ -49,19 +59,21 @@ const verificationTokenSchema = z.string().min(20).max(2048);
 // POST /api/v1/auth/signup
 export const signupRequestSchema = z.object({
   verificationToken: verificationTokenSchema,
-  pin: pinSchema,
+  password: passwordSchema,
   device: deviceInfoSchema,
 });
 export type SignupRequest = z.infer<typeof signupRequestSchema>;
 
 // POST /api/v1/auth/login
-export const loginWithPinRequestSchema = z.object({
-  email: emailSchema,
-  // Not pinSchema: an old PIN that is "too easy" today must still be able to log in.
-  pin: z.string().regex(/^\d{6}$/),
-  device: deviceInfoSchema,
-});
-export type LoginWithPinRequest = z.infer<typeof loginWithPinRequestSchema>;
+export const loginWithPasswordRequestSchema = z
+  .object({
+    ...accountIdFields,
+    // Not passwordSchema: a password set under older rules must still be able to log in.
+    password: z.string().min(1).max(128),
+    device: deviceInfoSchema,
+  })
+  .refine(oneAccountId, oneAccountIdIssue);
+export type LoginWithPasswordRequest = z.infer<typeof loginWithPasswordRequestSchema>;
 
 // POST /api/v1/auth/login/otp
 export const loginWithOtpRequestSchema = z.object({
@@ -70,25 +82,25 @@ export const loginWithOtpRequestSchema = z.object({
 });
 export type LoginWithOtpRequest = z.infer<typeof loginWithOtpRequestSchema>;
 
-// POST /api/v1/auth/pin/reset
-export const resetPinRequestSchema = z.object({
+// POST /api/v1/auth/password/reset
+export const resetPasswordRequestSchema = z.object({
   verificationToken: verificationTokenSchema,
-  newPin: pinSchema,
+  newPassword: passwordSchema,
   device: deviceInfoSchema,
 });
-export type ResetPinRequest = z.infer<typeof resetPinRequestSchema>;
+export type ResetPasswordRequest = z.infer<typeof resetPasswordRequestSchema>;
 
-// POST /api/v1/auth/pin/change
-export const changePinRequestSchema = z
+// POST /api/v1/auth/password/change
+export const changePasswordRequestSchema = z
   .object({
-    currentPin: z.string().regex(/^\d{6}$/),
-    newPin: pinSchema,
+    currentPassword: z.string().min(1).max(128),
+    newPassword: passwordSchema,
   })
-  .refine((body) => body.currentPin !== body.newPin, {
-    path: ['newPin'],
-    message: 'New PIN must differ from the current PIN',
+  .refine((body) => body.currentPassword !== body.newPassword, {
+    path: ['newPassword'],
+    message: 'New password must differ from the current password',
   });
-export type ChangePinRequest = z.infer<typeof changePinRequestSchema>;
+export type ChangePasswordRequest = z.infer<typeof changePasswordRequestSchema>;
 
 // POST /api/v1/auth/guest
 export const guestLoginRequestSchema = z.object({ device: deviceInfoSchema });
@@ -112,6 +124,8 @@ export type UpdatePushTokenRequest = z.infer<
 export interface AuthUserSummary {
   id: string;
   email: string | null;
+  /** E.164; set for accounts opened (or verified) with a phone number. */
+  phone: string | null;
   role: UserRole;
   isGuest: boolean;
 }

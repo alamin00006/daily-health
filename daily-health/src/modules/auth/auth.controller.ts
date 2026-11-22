@@ -17,23 +17,23 @@ import { OtpRateLimit } from '../../common/decorators/otp-rate-limit.decorator.j
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe.js';
 import { ApiZodBody } from '../../common/swagger/api-zod-body.decorator.js';
 import {
-  changePinRequestSchema,
+  changePasswordRequestSchema,
   guestLoginRequestSchema,
   loginWithOtpRequestSchema,
-  loginWithPinRequestSchema,
+  loginWithPasswordRequestSchema,
   refreshTokenRequestSchema,
-  resetPinRequestSchema,
+  resetPasswordRequestSchema,
   sendOtpRequestSchema,
   signupRequestSchema,
   updatePushTokenRequestSchema,
   verifyOtpRequestSchema,
   type AuthTokensResponse,
-  type ChangePinRequest,
+  type ChangePasswordRequest,
   type GuestLoginRequest,
   type LoginWithOtpRequest,
-  type LoginWithPinRequest,
+  type LoginWithPasswordRequest,
   type RefreshTokenRequest,
-  type ResetPinRequest,
+  type ResetPasswordRequest,
   type SendOtpRequest,
   type SendOtpResponse,
   type SignupRequest,
@@ -41,6 +41,7 @@ import {
   type VerifyOtpRequest,
   type VerifyOtpResponse,
 } from '../../shared-contracts/auth.contract.js';
+import { accountIdentifierOf } from './account-identifier.js';
 import { AuthService } from './auth.service.js';
 
 @ApiTags('auth')
@@ -53,15 +54,15 @@ export class AuthController {
   @Post('otp/send')
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({
-    summary: 'Email a 6-digit code (SIGNUP, LOGIN or RESET_PIN)',
+    summary: 'Send a 6-digit code by email or SMS (SIGNUP, LOGIN or RESET_PASSWORD)',
     description:
-      'Always answers 202 with the same body, whether or not the email has an account.',
+      'Give email or phone. Always answers 202 with the same body, whether or not it has an account. SMS_NOT_AVAILABLE (503) while no SMS gateway is set.',
   })
   @ApiZodBody(sendOtpRequestSchema)
   sendOtp(
     @Body(new ZodValidationPipe(sendOtpRequestSchema)) body: SendOtpRequest,
   ): Promise<SendOtpResponse> {
-    return this.auth.sendOtp(body.email, body.purpose);
+    return this.auth.sendOtp(accountIdentifierOf(body), body.purpose);
   }
 
   @PublicRoute()
@@ -75,19 +76,19 @@ export class AuthController {
   verifyOtp(
     @Body(new ZodValidationPipe(verifyOtpRequestSchema)) body: VerifyOtpRequest,
   ): Promise<VerifyOtpResponse> {
-    return this.auth.verifyOtp(body.email, body.purpose, body.code);
+    return this.auth.verifyOtp(accountIdentifierOf(body), body.purpose, body.code);
   }
 
   @PublicRoute()
   @Post('signup')
   @ApiOperation({
-    summary: 'Create the account with a verified email and a 6-digit PIN',
+    summary: 'Create the account with a verified email or phone and a password',
   })
   @ApiZodBody(signupRequestSchema)
   signup(
     @Body(new ZodValidationPipe(signupRequestSchema)) body: SignupRequest,
   ): Promise<AuthTokensResponse> {
-    return this.auth.signup(body.verificationToken, body.pin, body.device);
+    return this.auth.signup(body.verificationToken, body.password, body.device);
   }
 
   @PublicRoute()
@@ -95,16 +96,16 @@ export class AuthController {
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Log in with email + PIN',
+    summary: 'Log in with email or phone + password',
     description:
-      '5 wrong PINs lock PIN login for 15 minutes (doubling after that).',
+      '5 wrong passwords lock password login for 15 minutes (doubling after that).',
   })
-  @ApiZodBody(loginWithPinRequestSchema)
+  @ApiZodBody(loginWithPasswordRequestSchema)
   login(
-    @Body(new ZodValidationPipe(loginWithPinRequestSchema))
-    body: LoginWithPinRequest,
+    @Body(new ZodValidationPipe(loginWithPasswordRequestSchema))
+    body: LoginWithPasswordRequest,
   ): Promise<AuthTokensResponse> {
-    return this.auth.loginWithPin(body.email, body.pin, body.device);
+    return this.auth.loginWithPassword(accountIdentifierOf(body), body.password, body.device);
   }
 
   @PublicRoute()
@@ -112,7 +113,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary:
-      'Log in with an email code (purpose LOGIN); also clears a PIN lock',
+      'Log in with an email / SMS code (purpose LOGIN); also clears a password lock',
   })
   @ApiZodBody(loginWithOtpRequestSchema)
   loginWithOtp(
@@ -123,17 +124,17 @@ export class AuthController {
   }
 
   @PublicRoute()
-  @Post('pin/reset')
+  @Post('password/reset')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary:
-      'Set a new PIN after verifying a RESET_PIN code; signs out other devices',
+      'Set a new password after verifying a RESET_PASSWORD code; signs out other devices',
   })
-  @ApiZodBody(resetPinRequestSchema)
-  resetPin(
-    @Body(new ZodValidationPipe(resetPinRequestSchema)) body: ResetPinRequest,
+  @ApiZodBody(resetPasswordRequestSchema)
+  resetPassword(
+    @Body(new ZodValidationPipe(resetPasswordRequestSchema)) body: ResetPasswordRequest,
   ): Promise<AuthTokensResponse> {
-    return this.auth.resetPin(body.verificationToken, body.newPin, body.device);
+    return this.auth.resetPassword(body.verificationToken, body.newPassword, body.device);
   }
 
   @PublicRoute()
@@ -170,21 +171,21 @@ export class AuthController {
 
   @ApiBearerAuth()
   @LoginRateLimit()
-  @Post('pin/change')
+  @Post('password/change')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
-    summary: 'Change PIN while logged in; signs out other devices',
+    summary: 'Change password while logged in; signs out other devices',
   })
-  @ApiZodBody(changePinRequestSchema)
-  changePin(
+  @ApiZodBody(changePasswordRequestSchema)
+  changePassword(
     @CurrentUser() user: AuthenticatedUser,
-    @Body(new ZodValidationPipe(changePinRequestSchema)) body: ChangePinRequest,
+    @Body(new ZodValidationPipe(changePasswordRequestSchema)) body: ChangePasswordRequest,
   ): Promise<void> {
-    return this.auth.changePin(
+    return this.auth.changePassword(
       user.userId,
       user.sessionId,
-      body.currentPin,
-      body.newPin,
+      body.currentPassword,
+      body.newPassword,
     );
   }
 

@@ -4,7 +4,7 @@ import { PrismaService } from '../../core/prisma/prisma.service.js';
 /**
  * Where a user can be reached, for the notifications module (which must not
  * read auth tables itself). Push tokens count only on devices with a live
- * session: after logout or a PIN reset that phone stops getting pushes.
+ * session: after logout or a password reset that phone stops getting pushes.
  */
 @Injectable()
 export class UserContactPointsService {
@@ -32,7 +32,7 @@ export class UserContactPointsService {
     return result;
   }
 
-  /** E.164 numbers of users who have one (none until SMS OTP launches). */
+  /** E.164 numbers of users who have one (accounts opened or verified with a phone). */
   async smsPhonesByUser(userIds: string[]): Promise<Map<string, string>> {
     if (userIds.length === 0) return new Map();
     const users = await this.prisma.user.findMany({

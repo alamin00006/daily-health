@@ -15,7 +15,7 @@ export interface VerifiedOtp {
 
 /**
  * Short-lived JWT proving "this email was verified with purpose X".
- * Lets the app show the code screen and the PIN screen as two steps.
+ * Lets the app show the code screen and the password screen as two steps.
  * Single use: spending it marks OtpCode.consumedAt.
  */
 @Injectable()

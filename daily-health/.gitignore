@@ -60,3 +60,8 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 # Old dev uploads from before R2 (not used by the API; safe to delete)
 /storage
+
+# VPS deploy: secrets, certificates and backups stay on the server
+/deploy/.env
+/deploy/certbot/
+/deploy/backups/

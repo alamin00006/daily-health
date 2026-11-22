@@ -32,28 +32,14 @@ export const bangladeshPhoneSchema = z
       .regex(/^\+8801[3-9]\d{8}$/, 'Must be a Bangladeshi mobile number'),
   );
 
-const TRIVIAL_PINS = new Set([
-  '012345',
-  '123456',
-  '234567',
-  '345678',
-  '456789',
-  '987654',
-  '876543',
-  '765432',
-  '654321',
-  '543210',
-  '121212',
-  '112233',
-]);
-
-/** 6-digit login PIN. All-same-digit and sequential PINs are refused. */
-export const pinSchema = z
+/**
+ * Login password (owner's decision, 2026-11-21): at least 6 characters, nothing else
+ * required. 128 at most so a huge body cannot make argon2 work hard.
+ */
+export const passwordSchema = z
   .string()
-  .regex(/^\d{6}$/, 'PIN must be exactly 6 digits')
-  .refine((pin) => !/^(\d)\1{5}$/.test(pin) && !TRIVIAL_PINS.has(pin), {
-    message: 'PIN is too easy to guess',
-  });
+  .min(6, 'Password must be at least 6 characters')
+  .max(128, 'Password must be at most 128 characters');
 
 export const otpCodeSchema = z
   .string()

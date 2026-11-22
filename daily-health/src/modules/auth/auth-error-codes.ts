@@ -12,9 +12,12 @@ export const AuthErrorCode = {
   OTP_SEND_LIMIT_REACHED: 'OTP_SEND_LIMIT_REACHED',
   VERIFICATION_TOKEN_INVALID: 'VERIFICATION_TOKEN_INVALID',
   EMAIL_ALREADY_REGISTERED: 'EMAIL_ALREADY_REGISTERED',
-  /** Wrong email or PIN (deliberately not saying which). */
+  PHONE_ALREADY_REGISTERED: 'PHONE_ALREADY_REGISTERED',
+  /** A code by SMS was asked for while no SMS gateway is configured. */
+  SMS_NOT_AVAILABLE: 'SMS_NOT_AVAILABLE',
+  /** Wrong email / phone or password (deliberately not saying which). */
   INVALID_CREDENTIALS: 'INVALID_CREDENTIALS',
-  PIN_LOCKED: 'PIN_LOCKED',
+  PASSWORD_LOCKED: 'PASSWORD_LOCKED',
   ACCOUNT_SUSPENDED: 'ACCOUNT_SUSPENDED',
   GUEST_NOT_ALLOWED: 'GUEST_NOT_ALLOWED',
 } as const;

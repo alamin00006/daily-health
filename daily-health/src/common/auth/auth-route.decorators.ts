@@ -29,7 +29,7 @@ export const OptionalCurrentUser = createParamDecorator(
     context.switchToHttp().getRequest<AuthenticatedRequest>().authUser ?? null,
 );
 
-/** Guests (no email/PIN) get 403 GUEST_NOT_ALLOWED. */
+/** Guests (no email/password) get 403 GUEST_NOT_ALLOWED. */
 export const RegisteredUsersOnly = () =>
   SetMetadata(REGISTERED_USERS_ONLY_KEY, true);
 

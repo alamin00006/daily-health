@@ -1,5 +1,5 @@
 // modules/auth: accounts, OTP, devices and sessions (erd.md → "অথ ও ইউজার").
-// Login is email + 6-digit PIN for now; phone (SMS OTP) is added later.
+// Login is email + 6-digit password for now; phone (SMS OTP) is added later.
 
 enum UserRole {
   PATIENT
@@ -30,7 +30,7 @@ enum OtpChannel {
 enum OtpPurpose {
   SIGNUP
   LOGIN
-  RESET_PIN
+  RESET_PASSWORD
 
   @@schema("auth")
 }
@@ -43,25 +43,25 @@ enum DevicePlatform {
   @@schema("auth")
 }
 
-/// Guests have no email and no PIN (CHECK constraint in the migration).
+/// Guests have no email and no password (CHECK constraint in the migration).
 model User {
-  id                String     @id @default(uuid(7)) @db.Uuid
+  id                     String     @id @default(uuid(7)) @db.Uuid
   /// Lowercased. Unique when set; null for guests.
-  email             String?    @unique
-  emailVerifiedAt   DateTime?  @db.Timestamptz(3)
-  /// E.164 (+8801XXXXXXXXX). Unique when set. Not collected until SMS OTP launches.
-  phone             String?    @unique
-  /// argon2id hash of the 6-digit PIN; null for guests.
-  pinHash           String?
-  role              UserRole   @default(PATIENT)
-  status            UserStatus @default(ACTIVE)
-  isGuest           Boolean    @default(false)
-  /// Wrong PINs in a row; reset on success. Locks login at the limit.
-  failedPinAttempts Int        @default(0)
-  pinLockedUntil    DateTime?  @db.Timestamptz(3)
-  lastLoginAt       DateTime?  @db.Timestamptz(3)
-  createdAt         DateTime   @default(now()) @db.Timestamptz(3)
-  updatedAt         DateTime   @updatedAt @db.Timestamptz(3)
+  email                  String?    @unique
+  emailVerifiedAt        DateTime?  @db.Timestamptz(3)
+  /// E.164 (+8801XXXXXXXXX). Unique when set; stored after an SMS code is verified.
+  phone                  String?    @unique
+  /// argon2id hash of the login password; null for guests.
+  passwordHash           String?
+  role                   UserRole   @default(PATIENT)
+  status                 UserStatus @default(ACTIVE)
+  isGuest                Boolean    @default(false)
+  /// Wrong passwords in a row; reset on success. Locks login at the limit.
+  failedPasswordAttempts Int        @default(0)
+  passwordLockedUntil    DateTime?  @db.Timestamptz(3)
+  lastLoginAt            DateTime?  @db.Timestamptz(3)
+  createdAt              DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime   @updatedAt @db.Timestamptz(3)
 
   devices  Device[]
   sessions Session[]

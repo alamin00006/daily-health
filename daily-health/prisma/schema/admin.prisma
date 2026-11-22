@@ -28,13 +28,13 @@ model AuditLog {
 /// auth.User so the access guard can read it.
 model StaffMember {
   /// ref auth.User
-  userId          String   @id @db.Uuid
-  staffCode       String   @unique
-  fullName        String
+  userId        String   @id @db.Uuid
+  staffCode     String   @unique
+  fullName      String
   /// ref auth.User; null for the first admin (seed / bootstrap).
-  addedByUserId   String?  @db.Uuid
-  createdAt       DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt       DateTime @updatedAt @db.Timestamptz(3)
+  addedByUserId String?  @db.Uuid
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(3)
 
   @@schema("admin")
 }

@@ -47,25 +47,244 @@ $ npm run start:prod
 ## Local services and database
 
 ```bash
-# Postgres (PostGIS), Redis, Mailpit (email inbox at http://localhost:8025), file server
+# Postgres (PostGIS) and Redis
 $ npm run services:up
 
 # apply migrations
 $ npm run db:migrate
 ```
 
-## Deployment
+## VPS-এ চালু করা (Deployment)
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+VPS-এ চালানোর সব ফাইল `deploy/` ফোল্ডারে (আর `Dockerfile` এই ফোল্ডারেই):
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+| ফাইল | কাজ |
+|---|---|
+| `Dockerfile` | API-র image |
+| `deploy/docker-compose.prod.yml` | Postgres, Redis, migration, API আর Nginx |
+| `deploy/nginx/api.conf.template` | HTTPS, upload-এর সীমা, Socket.io |
+| `deploy/.env.production.example` | server-এর `.env`-এর নমুনা |
+| `deploy/init-ssl.sh` | প্রথমবার চালু করা আর HTTPS সার্টিফিকেট নেওয়া |
+| `deploy/backup-db.sh` | প্রতিদিনের DB backup |
+
+বাইরে থেকে শুধু Nginx দেখা যায় (port 80 আর 443)। Database আর Redis শুধু Docker-এর ভেতরে থাকে।
+
+---
+
+### ০. শুরুর আগে যা লাগবে
+
+1. **VPS:** Ubuntu 24.04 (বা 22.04)। কমপক্ষে ২ GB RAM, ভালো হয় ৪ GB। Disk কমপক্ষে ৪০ GB।
+2. **Domain:** API-র জন্য একটা subdomain, যেমন `api.example.com`।
+3. **GitHub-এ code:** VPS থেকে repo clone করা যায় এমন অনুমতি (নিচে ধাপ ৩)।
+4. **Cloudflare R2-এ দুটো bucket:** একটা public (ছবি, logo), একটা **private, public access বন্ধ** (রিপোর্ট, প্রেসক্রিপশন)। দুটোর নাম আলাদা হতে হবে।
+
+---
+
+### ১. Domain-কে VPS-এ দেখানো
+
+Domain-এর DNS-এ একটা **A record** যোগ করুন:
+
+| Type | Name | Value |
+|---|---|---|
+| A | `api` | VPS-এর IP |
+
+Cloudflare-এ DNS থাকলে প্রথমবার সার্টিফিকেট নেওয়া পর্যন্ত **Proxy বন্ধ রাখুন (ধূসর মেঘ, "DNS only")**।
+
+কয়েক মিনিট পর আপনার কম্পিউটার থেকে যাচাই করুন:
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+nslookup api.example.com
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+উত্তরে VPS-এর IP এলে পরের ধাপে যান।
+
+---
+
+### ২. VPS প্রস্তুত করা
+
+VPS-এ root হিসেবে SSH করুন, তারপর:
+
+```bash
+# সব update
+apt update && apt upgrade -y
+
+# আলাদা একটা user (root দিয়ে সব কাজ করবেন না)
+adduser deploy
+usermod -aG sudo deploy
+
+# Firewall: শুধু SSH, HTTP, HTTPS
+ufw allow OpenSSH
+ufw allow 80
+ufw allow 443
+ufw enable
+
+# Docker
+curl -fsSL https://get.docker.com | sh
+usermod -aG docker deploy
+```
+
+এবার `exit` করে **`deploy` user হিসেবে আবার SSH করুন**, তারপর যাচাই করুন:
+
+```bash
+docker run --rm hello-world
+```
+
+---
+
+### ৩. Code VPS-এ আনা
+
+Repo private হলে VPS-এর জন্য একটা read-only deploy key বানান:
+
+```bash
+ssh-keygen -t ed25519 -C "daily-health-vps" -f ~/.ssh/github_deploy -N ""
+cat ~/.ssh/github_deploy.pub
+```
+
+যা দেখাবে, সেটা GitHub-এ repo → **Settings → Deploy keys → Add deploy key**-এ বসান। "Allow write access" বন্ধ রাখুন।
+
+```bash
+cat >> ~/.ssh/config <<'EOF'
+Host github.com
+  IdentityFile ~/.ssh/github_deploy
+EOF
+
+git clone git@github.com:alamin00006/daily-health.git ~/daily-health
+cd ~/daily-health/daily-health/deploy
+```
+
+---
+
+### ৪. Server-এর `.env` বানানো
+
+```bash
+cp .env.production.example .env
+nano .env
+```
+
+যা যা বসাতে হবে:
+
+- **`API_DOMAIN`**, **`LETSENCRYPT_EMAIL`**, আর যেখানে যেখানে `api.example.com` লেখা আছে সেখানে আপনার domain।
+- **নতুন secret:** নিচের command দিয়ে বানিয়ে বসান। **আপনার কম্পিউটারের `.env`-এর key copy করবেন না।**
+  ```bash
+  openssl rand -base64 32                  # POSTGRES_PASSWORD, JWT_SECRET, OTP_HASH_SECRET (প্রতিটার জন্য আলাদা)
+  echo "1:$(openssl rand -base64 32)"      # ENCRYPTION_KEYS
+  ```
+  `DATABASE_URL`-এর ভেতরেও একই `POSTGRES_PASSWORD` বসাতে হবে। পাসওয়ার্ডে `/`, `+` বা `=` থাকলে `openssl rand -hex 24` দিয়ে বানান, তাতে URL ভাঙবে না।
+- **R2, Gmail, BulkSMSBD, shurjoPay, Agora:** এদের key আর password।
+- **`APP_ENV`:** test server হলে `staging`, আসল ব্যবহারকারীদের জন্য `production`।
+
+⚠️ **`ENCRYPTION_KEYS` হারালে রোগীর এনক্রিপ্ট করা তথ্য আর কখনো পড়া যাবে না।** এটা password manager-এ রেখে দিন।
+
+ফাইলটা শুধু আপনি পড়তে পারবেন এমন করুন:
+
+```bash
+chmod 600 .env
+```
+
+---
+
+### ৫. প্রথমবার চালু করা (HTTPS সহ)
+
+```bash
+bash init-ssl.sh
+```
+
+এই script যা করে:
+1. API-র image build করে (প্রথমবার কয়েক মিনিট লাগে)।
+2. Database migration চালায়।
+3. সব কিছু চালু করে।
+4. Let's Encrypt থেকে বিনা খরচের HTTPS সার্টিফিকেট নেয়।
+
+শেষে যাচাই করুন:
+
+```bash
+curl https://api.example.com/api/health
+```
+
+`"status":"ok"` এলে API চালু হয়ে গেছে।
+
+**Staging-এ demo data চাইলে** (production-এ এটা নিজেই চলতে দেয় না):
+
+```bash
+docker compose -f docker-compose.prod.yml run --rm migrate npm run db:seed
+```
+
+এরপর demo account (যেমন `rahim.demo@example.com`, পাসওয়ার্ড `274816`) দিয়ে login করা যাবে।
+
+---
+
+### ৬. সার্টিফিকেট নবায়ন আর প্রতিদিনের backup (cron)
+
+```bash
+crontab -e
+```
+
+এই দুটো লাইন যোগ করুন (`/home/deploy/...` আপনার ঠিকানা অনুযায়ী বদলাবেন):
+
+```cron
+# HTTPS সার্টিফিকেট নবায়ন (দিনে দুবার দেখে; মেয়াদ শেষের কাছাকাছি হলে নবায়ন করে)
+17 3,15 * * * cd /home/deploy/daily-health/daily-health/deploy && docker compose -f docker-compose.prod.yml run --rm certbot renew --quiet && docker compose -f docker-compose.prod.yml exec nginx nginx -s reload
+
+# প্রতিদিন রাত ২:৩০-এ DB backup (১৪ দিন রাখে)
+30 2 * * * /bin/bash /home/deploy/daily-health/daily-health/deploy/backup-db.sh >> /home/deploy/backup.log 2>&1
+```
+
+Backup শুধু এই server-এ রাখলে server হারালে backup-ও হারাবে। মাঝে মাঝে `deploy/backups/`-এর ফাইল নিজের কম্পিউটারে বা অন্য কোথাও copy করে রাখুন।
+
+---
+
+### ৭. নতুন code দিলে (update)
+
+```bash
+cd ~/daily-health && git pull
+cd daily-health/deploy
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+নতুন migration থাকলে নিজে থেকেই চলবে, তারপর API নতুন করে চালু হবে।
+
+---
+
+### ৮. দরকারি command
+
+```bash
+cd ~/daily-health/daily-health/deploy
+C="docker compose -f docker-compose.prod.yml"
+
+$C ps                     # কোনটা চলছে
+$C logs -f api            # API-র log (Ctrl+C দিয়ে বের হবেন)
+$C restart api            # API আবার চালু
+$C exec postgres psql -U daily_health -d daily_health   # DB-তে ঢোকা
+```
+
+**Backup থেকে DB ফেরত আনা:**
+
+⚠️ এটা এখনকার data-র ওপর লিখে দেয়।
+
+```bash
+$C exec -T postgres pg_restore -U daily_health -d daily_health --clean --if-exists < backups/db-YYYYMMDD-HHMMSS.dump
+```
+
+---
+
+### ৯. চালু হওয়ার পর app আর অন্য সেবায় যা বদলাতে হবে
+
+- **Mobile app:** `EXPO_PUBLIC_API_URL=https://api.example.com` দিয়ে নতুন build। এখন https, তাই `http` চালু করার plugin আর লাগবে না।
+- **Web panel:** তার `API_BASE_URL=https://api.example.com/api/v1` আর `NEXT_PUBLIC_REALTIME_URL=https://api.example.com`। Panel যেখানে চলবে, তার ঠিকানা API-র `CORS_ORIGINS`-এ দিন।
+- **shurjoPay:** merchant panel-এ IPN URL হবে `https://api.example.com/api/v1/payments/ipn/shurjopay` (API প্রতিটা payment-এর সাথে এটা নিজেও পাঠায়)।
+- **BulkSMSBD:** dashboard-এ IP whitelist চাইলে VPS-এর IP দিন।
+
+---
+
+### সমস্যা হলে
+
+| লক্ষণ | কী দেখবেন |
+|---|---|
+| `init-ssl.sh` সার্টিফিকেট পায় না | DNS এখনো VPS-এ আসেনি (`nslookup`), port 80 বন্ধ (`ufw status`), বা Cloudflare proxy চালু |
+| API বারবার restart হয় | `$C logs api`। প্রায়ই `.env`-এর কোনো ভুল, log-এ কোন ঘর ভুল তা লেখা থাকে |
+| `migrate` ব্যর্থ | `$C logs migrate`। `DATABASE_URL`-এর পাসওয়ার্ড `POSTGRES_PASSWORD`-এর সাথে মিলছে কিনা দেখুন |
+| ছবি বা রিপোর্ট আসে না | R2-এর key, bucket-এর নাম, আর `PUBLIC_FILES_BASE_URL` |
+| কল বা চ্যাট লাইভ আসে না | Socket.io-র সংযোগ Nginx দিয়ে যাচ্ছে কিনা (`$C logs nginx`) |
 
 ## Observability
 

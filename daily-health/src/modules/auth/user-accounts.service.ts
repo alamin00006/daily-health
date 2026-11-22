@@ -6,6 +6,8 @@ export interface UserAccount {
   id: string;
   email: string | null;
   emailVerified: boolean;
+  /** E.164; accounts opened with a phone have this instead of an email. */
+  phone: string | null;
   role: UserRole;
   isGuest: boolean;
   isActive: boolean;
@@ -15,6 +17,7 @@ const ACCOUNT_SELECT = {
   id: true,
   email: true,
   emailVerifiedAt: true,
+  phone: true,
   role: true,
   isGuest: true,
   status: true,
@@ -23,7 +26,7 @@ const ACCOUNT_SELECT = {
 /**
  * The auth module's public API for other modules. Other modules never read
  * auth tables directly (CLAUDE.md §4 "Module boundaries").
- * Never exposes PIN hashes or lockout state.
+ * Never exposes password hashes or lockout state.
  */
 @Injectable()
 export class UserAccountsService {
@@ -82,7 +85,17 @@ export class UserAccountsService {
         isGuest: false,
         status: input.status ?? { not: 'DELETED' },
         ...(input.role ? { role: input.role } : {}),
-        ...(input.q ? { email: { contains: input.q.toLowerCase() } } : {}),
+        // Part of the email, or digits of the phone number (01711… or 8801711…).
+        ...(input.q
+          ? {
+              OR: [
+                { email: { contains: input.q.toLowerCase() } },
+                ...(/^\+?\d{3,}$/.test(input.q.replace(/[\s-]/g, ''))
+                  ? [{ phone: { contains: input.q.replace(/[\s-]/g, '').replace(/^\+?(880)?0?/, '') } }]
+                  : []),
+              ],
+            }
+          : {}),
       },
       select: { ...ACCOUNT_SELECT, createdAt: true, lastLoginAt: true },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
@@ -144,6 +157,7 @@ function toAccount(user: {
   id: string;
   email: string | null;
   emailVerifiedAt: Date | null;
+  phone: string | null;
   role: UserRole;
   isGuest: boolean;
   status: string;
@@ -152,6 +166,7 @@ function toAccount(user: {
     id: user.id,
     email: user.email,
     emailVerified: user.emailVerifiedAt !== null,
+    phone: user.phone,
     role: user.role,
     isGuest: user.isGuest,
     isActive: user.status === 'ACTIVE',

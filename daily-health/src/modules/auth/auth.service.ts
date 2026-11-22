@@ -1,5 +1,7 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { AppException } from '../../common/errors/app-exception.js';
+import { AppConfigService } from '../../core/config/app-config.service.js';
 import { EmailOutboxService } from '../../core/mail/email-outbox.service.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import type { User } from '../../generated/prisma/client.js';
@@ -11,25 +13,35 @@ import type {
 } from '../../shared-contracts/auth.contract.js';
 import type { DeviceInfo } from '../../shared-contracts/common-fields.contract.js';
 import {
+  AUTH_OTP_SMS_EVENT,
+  type AccountIdentifier,
+  type AuthOtpSmsEvent,
+  channelOfDestination,
+  userWhereDestination,
+} from './account-identifier.js';
+import {
   accountAlreadyExistsEmail,
+  accountAlreadyExistsSms,
   otpCodeEmail,
+  otpCodeSms,
 } from './auth-email-templates.js';
 import { AuthErrorCode } from './auth-error-codes.js';
 import { AuthSessionsService } from './auth-sessions.service.js';
 import { OTP_TTL_SECONDS, OtpCodesService } from './otp-codes.service.js';
-import { PinHashingService } from './pin-hashing.service.js';
+import { PasswordHashingService } from './password-hashing.service.js';
 import { VerificationTokensService } from './verification-tokens.service.js';
 
-/** Wrong PINs in a row before login locks. Every further block of 5 doubles the lock. */
-const PIN_ATTEMPTS_BEFORE_LOCK = 5;
-const PIN_LOCK_BASE_MS = 15 * 60_000;
-const PIN_LOCK_MAX_MS = 24 * 3_600_000;
+/** Wrong passwords in a row before login locks. Every further block of 5 doubles the lock. */
+const PASSWORD_ATTEMPTS_BEFORE_LOCK = 5;
+const PASSWORD_LOCK_BASE_MS = 15 * 60_000;
+const PASSWORD_LOCK_MAX_MS = 24 * 3_600_000;
 
 /**
- * Email-based auth (phone/SMS comes later):
- *   signup:      otp/send(SIGNUP) → otp/verify → signup(token, PIN)
- *   login:       login(email, PIN)  or  otp/send(LOGIN) → otp/verify → login/otp(token)
- *   forgot PIN:  otp/send(RESET_PIN) → otp/verify → pin/reset(token, new PIN)
+ * Auth by email (code by email) or Bangladeshi mobile number (code by SMS):
+ *   signup:      otp/send(SIGNUP) → otp/verify → signup(token, password)
+ *   login:       login(email|phone, password)  or  otp/send(LOGIN) → otp/verify → login/otp(token)
+ *   forgot password:  otp/send(RESET_PASSWORD) → otp/verify → password/reset(token, new password)
+ * An account opened with a phone has no email, and the other way round.
  */
 @Injectable()
 export class AuthService {
@@ -38,29 +50,49 @@ export class AuthService {
     private readonly otpCodes: OtpCodesService,
     private readonly verificationTokens: VerificationTokensService,
     private readonly sessions: AuthSessionsService,
-    private readonly pins: PinHashingService,
+    private readonly passwords: PasswordHashingService,
     private readonly emails: EmailOutboxService,
+    private readonly events: EventEmitter2,
+    private readonly config: AppConfigService,
   ) {}
 
   /**
-   * Answers the same way whether or not the email has an account, so the
-   * endpoint cannot be used to find out who is registered. A code is always
-   * issued (same limits for everyone) but only emailed when it is usable.
+   * Answers the same way whether or not the email / phone has an account, so the
+   * endpoint cannot be used to find out who is registered. A code is always issued
+   * (same limits for everyone) but only sent when it is usable.
    */
-  async sendOtp(email: string, purpose: OtpPurpose): Promise<SendOtpResponse> {
-    const issued = await this.otpCodes.issue('EMAIL', email, purpose);
-    const account = await this.findRegisteredByEmail(email);
+  async sendOtp(id: AccountIdentifier, purpose: OtpPurpose): Promise<SendOtpResponse> {
+    // Refuse before issuing: with no SMS gateway the code could never arrive.
+    if (id.channel === 'SMS' && !this.config.sms) {
+      throw new AppException(
+        AuthErrorCode.SMS_NOT_AVAILABLE,
+        'Codes by SMS are not available right now; use email',
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+    const issued = await this.otpCodes.issue(id.channel, id.destination, purpose);
+    const account = await this.findRegistered(id.destination);
+    const ttlMinutes = OTP_TTL_SECONDS / 60;
 
     if (purpose === 'SIGNUP') {
-      await this.emails.enqueue(
-        account
-          ? accountAlreadyExistsEmail(email)
-          : otpCodeEmail(email, purpose, issued.code, OTP_TTL_SECONDS / 60),
-      );
+      if (id.channel === 'EMAIL') {
+        await this.emails.enqueue(
+          account
+            ? accountAlreadyExistsEmail(id.destination)
+            : otpCodeEmail(id.destination, purpose, issued.code, ttlMinutes),
+        );
+      } else {
+        this.sendSms(
+          id.destination,
+          account ? accountAlreadyExistsSms() : otpCodeSms(purpose, issued.code, ttlMinutes),
+        );
+      }
     } else if (account && account.status === 'ACTIVE') {
-      await this.emails.enqueue(
-        otpCodeEmail(email, purpose, issued.code, OTP_TTL_SECONDS / 60),
-      );
+      if (id.channel === 'EMAIL') {
+        await this.emails.enqueue(otpCodeEmail(id.destination, purpose, issued.code, ttlMinutes));
+      } else {
+        this.sendSms(id.destination, otpCodeSms(purpose, issued.code, ttlMinutes));
+      }
     }
 
     return {
@@ -70,14 +102,14 @@ export class AuthService {
   }
 
   async verifyOtp(
-    email: string,
+    id: AccountIdentifier,
     purpose: OtpPurpose,
     code: string,
   ): Promise<VerifyOtpResponse> {
-    const otpId = await this.otpCodes.verify(email, purpose, code);
+    const otpId = await this.otpCodes.verify(id.destination, purpose, code);
     const { token, expiresInSec } = this.verificationTokens.sign({
       otpId,
-      destination: email,
+      destination: id.destination,
       purpose,
     });
     return { verificationToken: token, expiresInSec };
@@ -85,14 +117,14 @@ export class AuthService {
 
   async signup(
     verificationToken: string,
-    pin: string,
+    password: string,
     device: DeviceInfo,
   ): Promise<AuthTokensResponse> {
     const verified = this.verificationTokens.verify(
       verificationToken,
       'SIGNUP',
     );
-    const pinHash = await this.pins.hash(pin);
+    const passwordHash = await this.passwords.hash(password);
 
     return this.prisma.$transaction(async (tx) => {
       await this.otpCodes.consumeVerification(
@@ -101,45 +133,52 @@ export class AuthService {
         verified.destination,
         'SIGNUP',
       );
+      const byPhone = channelOfDestination(verified.destination) === 'SMS';
       const existing = await tx.user.findUnique({
-        where: { email: verified.destination },
+        where: userWhereDestination(verified.destination),
         select: { id: true },
       });
       if (existing) {
         throw new AppException(
-          AuthErrorCode.EMAIL_ALREADY_REGISTERED,
-          'An account with this email already exists',
+          byPhone
+            ? AuthErrorCode.PHONE_ALREADY_REGISTERED
+            : AuthErrorCode.EMAIL_ALREADY_REGISTERED,
+          byPhone
+            ? 'An account with this phone already exists'
+            : 'An account with this email already exists',
           HttpStatus.CONFLICT,
         );
       }
 
       const now = new Date();
       const user = await tx.user.create({
-        data: {
-          email: verified.destination,
-          emailVerifiedAt: now,
-          pinHash,
-          lastLoginAt: now,
-        },
+        data: byPhone
+          ? { phone: verified.destination, passwordHash, lastLoginAt: now }
+          : {
+              email: verified.destination,
+              emailVerifiedAt: now,
+              passwordHash,
+              lastLoginAt: now,
+            },
       });
       return this.sessions.startSession(user, device, tx);
     });
   }
 
-  async loginWithPin(
-    email: string,
-    pin: string,
+  async loginWithPassword(
+    id: AccountIdentifier,
+    password: string,
     device: DeviceInfo,
   ): Promise<AuthTokensResponse> {
-    const user = await this.findRegisteredByEmail(email);
+    const user = await this.findRegistered(id.destination);
     if (!user) {
-      await this.pins.verify(null, pin);
+      await this.passwords.verify(null, password);
       throw invalidCredentials();
     }
 
-    await this.assertPinNotLocked(user);
-    if (!(await this.pins.verify(user.pinHash, pin))) {
-      await this.recordWrongPin(user.id);
+    await this.assertPasswordNotLocked(user);
+    if (!(await this.passwords.verify(user.passwordHash, password))) {
+      await this.recordWrongPassword(user.id);
       throw invalidCredentials();
     }
     assertActive(user);
@@ -148,8 +187,8 @@ export class AuthService {
       const updated = await tx.user.update({
         where: { id: user.id },
         data: {
-          failedPinAttempts: 0,
-          pinLockedUntil: null,
+          failedPasswordAttempts: 0,
+          passwordLockedUntil: null,
           lastLoginAt: new Date(),
         },
       });
@@ -171,17 +210,17 @@ export class AuthService {
         'LOGIN',
       );
       const user = await tx.user.findUnique({
-        where: { email: verified.destination },
+        where: userWhereDestination(verified.destination),
       });
       if (!user || user.isGuest) throw invalidCredentials();
       assertActive(user);
 
-      // Proving the email also clears a PIN lockout.
+      // Proving the email / phone also clears a password lockout.
       const updated = await tx.user.update({
         where: { id: user.id },
         data: {
-          failedPinAttempts: 0,
-          pinLockedUntil: null,
+          failedPasswordAttempts: 0,
+          passwordLockedUntil: null,
           lastLoginAt: new Date(),
         },
       });
@@ -189,27 +228,27 @@ export class AuthService {
     });
   }
 
-  /** Sets a new PIN and signs out every other device. */
-  async resetPin(
+  /** Sets a new password and signs out every other device. */
+  async resetPassword(
     verificationToken: string,
-    newPin: string,
+    newPassword: string,
     device: DeviceInfo,
   ): Promise<AuthTokensResponse> {
     const verified = this.verificationTokens.verify(
       verificationToken,
-      'RESET_PIN',
+      'RESET_PASSWORD',
     );
-    const pinHash = await this.pins.hash(newPin);
+    const passwordHash = await this.passwords.hash(newPassword);
 
     return this.prisma.$transaction(async (tx) => {
       await this.otpCodes.consumeVerification(
         tx,
         verified.otpId,
         verified.destination,
-        'RESET_PIN',
+        'RESET_PASSWORD',
       );
       const user = await tx.user.findUnique({
-        where: { email: verified.destination },
+        where: userWhereDestination(verified.destination),
       });
       if (!user || user.isGuest) throw invalidCredentials();
       assertActive(user);
@@ -217,9 +256,9 @@ export class AuthService {
       const updated = await tx.user.update({
         where: { id: user.id },
         data: {
-          pinHash,
-          failedPinAttempts: 0,
-          pinLockedUntil: null,
+          passwordHash,
+          failedPasswordAttempts: 0,
+          passwordLockedUntil: null,
           lastLoginAt: new Date(),
         },
       });
@@ -228,29 +267,29 @@ export class AuthService {
     });
   }
 
-  /** Logged-in PIN change. Other devices are signed out; this one stays. */
-  async changePin(
+  /** Logged-in password change. Other devices are signed out; this one stays. */
+  async changePassword(
     userId: string,
     sessionId: string,
-    currentPin: string,
-    newPin: string,
+    currentPassword: string,
+    newPassword: string,
   ): Promise<void> {
     const user = await this.prisma.user.findUniqueOrThrow({
       where: { id: userId },
     });
     if (user.isGuest) throw guestNotAllowed();
 
-    await this.assertPinNotLocked(user);
-    if (!(await this.pins.verify(user.pinHash, currentPin))) {
-      await this.recordWrongPin(user.id);
+    await this.assertPasswordNotLocked(user);
+    if (!(await this.passwords.verify(user.passwordHash, currentPassword))) {
+      await this.recordWrongPassword(user.id);
       throw invalidCredentials();
     }
 
-    const pinHash = await this.pins.hash(newPin);
+    const passwordHash = await this.passwords.hash(newPassword);
     await this.prisma.$transaction(async (tx) => {
       await tx.user.update({
         where: { id: userId },
-        data: { pinHash, failedPinAttempts: 0, pinLockedUntil: null },
+        data: { passwordHash, failedPasswordAttempts: 0, passwordLockedUntil: null },
       });
       await this.sessions.revokeAllSessions(userId, {
         exceptSessionId: sessionId,
@@ -281,42 +320,50 @@ export class AuthService {
     return this.sessions.updatePushToken(sessionId, pushToken);
   }
 
-  private async findRegisteredByEmail(email: string): Promise<User | null> {
-    const user = await this.prisma.user.findUnique({ where: { email } });
+  private async findRegistered(destination: string): Promise<User | null> {
+    const user = await this.prisma.user.findUnique({
+      where: userWhereDestination(destination),
+    });
     return user && !user.isGuest ? user : null;
   }
 
-  private async assertPinNotLocked(user: User): Promise<void> {
-    if (user.pinLockedUntil && user.pinLockedUntil > new Date()) {
+  /** Hands the SMS to the notifications module, which sends it and logs failures. */
+  private sendSms(phone: string, text: string): void {
+    const event: AuthOtpSmsEvent = { phone, text };
+    this.events.emit(AUTH_OTP_SMS_EVENT, event);
+  }
+
+  private async assertPasswordNotLocked(user: User): Promise<void> {
+    if (user.passwordLockedUntil && user.passwordLockedUntil > new Date()) {
       throw new AppException(
-        AuthErrorCode.PIN_LOCKED,
-        'Too many wrong PINs; try later or log in with an email code',
+        AuthErrorCode.PASSWORD_LOCKED,
+        'Too many wrong passwords; try later or log in with a code',
         HttpStatus.TOO_MANY_REQUESTS,
         {
           retryAfterSec: Math.ceil(
-            (user.pinLockedUntil.getTime() - Date.now()) / 1000,
+            (user.passwordLockedUntil.getTime() - Date.now()) / 1000,
           ),
         },
       );
     }
   }
 
-  private async recordWrongPin(userId: string): Promise<void> {
+  private async recordWrongPassword(userId: string): Promise<void> {
     // Atomic increment, so parallel wrong guesses are all counted.
-    const { failedPinAttempts } = await this.prisma.user.update({
+    const { failedPasswordAttempts } = await this.prisma.user.update({
       where: { id: userId },
-      data: { failedPinAttempts: { increment: 1 } },
-      select: { failedPinAttempts: true },
+      data: { failedPasswordAttempts: { increment: 1 } },
+      select: { failedPasswordAttempts: true },
     });
-    if (failedPinAttempts % PIN_ATTEMPTS_BEFORE_LOCK === 0) {
-      const blocks = failedPinAttempts / PIN_ATTEMPTS_BEFORE_LOCK;
+    if (failedPasswordAttempts % PASSWORD_ATTEMPTS_BEFORE_LOCK === 0) {
+      const blocks = failedPasswordAttempts / PASSWORD_ATTEMPTS_BEFORE_LOCK;
       const lockMs = Math.min(
-        PIN_LOCK_BASE_MS * 2 ** (blocks - 1),
-        PIN_LOCK_MAX_MS,
+        PASSWORD_LOCK_BASE_MS * 2 ** (blocks - 1),
+        PASSWORD_LOCK_MAX_MS,
       );
       await this.prisma.user.update({
         where: { id: userId },
-        data: { pinLockedUntil: new Date(Date.now() + lockMs) },
+        data: { passwordLockedUntil: new Date(Date.now() + lockMs) },
       });
     }
   }
@@ -335,7 +382,7 @@ function assertActive(user: Pick<User, 'status'>): void {
 function invalidCredentials(): AppException {
   return new AppException(
     AuthErrorCode.INVALID_CREDENTIALS,
-    'Wrong email or PIN',
+    'Wrong email / phone or password',
     HttpStatus.UNAUTHORIZED,
   );
 }

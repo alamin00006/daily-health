@@ -27,7 +27,7 @@ import {
 /**
  * Global guard: every HTTP route needs `Authorization: Bearer <access token>`
  * unless marked @PublicRoute(). Besides the JWT signature it checks that the
- * session is not revoked (logout, PIN reset) and the account is active,
+ * session is not revoked (logout, password reset) and the account is active,
  * so revocation takes effect immediately instead of when the token expires.
  */
 @Injectable()

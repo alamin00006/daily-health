@@ -3,7 +3,7 @@ import { createTransport, type Transporter } from 'nodemailer';
 import { AppConfigService } from '../config/app-config.service.js';
 import { EmailSender, type OutgoingEmail } from './email-sender.js';
 
-/** Sends through any SMTP server (Mailpit locally; Gmail/Zoho/Brevo/SES SMTP in production). */
+/** Sends with nodemailer through Gmail (SMTP_SERVICE / SMTP_USER / SMTP_PASSWORD). */
 @Injectable()
 export class SmtpEmailSenderService
   extends EmailSender
@@ -14,12 +14,10 @@ export class SmtpEmailSenderService
 
   constructor(config: AppConfigService) {
     super();
-    const { host, port, secure, auth, from } = config.smtp;
+    const { service, auth, from } = config.smtp;
     this.from = from;
     this.transporter = createTransport({
-      host,
-      port,
-      secure,
+      service,
       auth,
       pool: true,
       connectionTimeout: 10_000,

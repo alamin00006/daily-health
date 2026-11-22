@@ -57,19 +57,11 @@ export class AppConfigService {
     };
   }
 
-  get smtp(): {
-    host: string;
-    port: number;
-    secure: boolean;
-    auth: { user: string; pass: string } | undefined;
-    from: string;
-  } {
-    const { SMTP_USER: user, SMTP_PASSWORD: pass } = this.env;
+  /** nodemailer transport: a well-known service (Gmail by default) with its login. */
+  get smtp(): { service: string; auth: { user: string; pass: string }; from: string } {
     return {
-      host: this.env.SMTP_HOST,
-      port: this.env.SMTP_PORT,
-      secure: this.env.SMTP_SECURE,
-      auth: user && pass ? { user, pass } : undefined,
+      service: this.env.SMTP_SERVICE,
+      auth: { user: this.env.SMTP_USER, pass: this.env.SMTP_PASSWORD },
       from: this.env.MAIL_FROM,
     };
   }
@@ -131,6 +123,13 @@ export class AppConfigService {
   /** Expo push API access token, if the Expo project requires one. */
   get expoPushAccessToken(): string | undefined {
     return this.env.EXPO_PUSH_ACCESS_TOKEN;
+  }
+
+  /** BulkSMSBD settings, or null while the key / sender ID are not set (SMS are then not sent). */
+  get sms(): { host: string; apiKey: string; senderId: string } | null {
+    const { SMS_API_KEY_VALUE: apiKey, SMS_SENDER_ID: senderId } = this.env;
+    if (!apiKey || !senderId) return null;
+    return { host: this.env.SMS_API_HOST_SITE, apiKey, senderId };
   }
 
   get payments(): {

@@ -62,6 +62,7 @@ export class StaffAndUsersService {
         return {
           id: a.id,
           email: a.email,
+          phone: a.phone,
           role: a.role,
           suspended: a.suspended,
           emailVerified: a.emailVerified,
