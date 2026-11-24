@@ -5,8 +5,9 @@
 
 | ফাইল | কাজ |
 |---|---|
-| `docker-compose.prod.yml` | Postgres, Redis, migration, API আর Nginx |
-| `nginx/api.conf.template` | HTTPS, upload-এর সীমা, Socket.io |
+| `docker-compose.prod.yml` | Postgres, Redis, migration আর API (চাইলে নিজস্ব Nginx-ও) |
+| `nginx/host-site.conf` | VPS-এ আগে থেকে Nginx থাকলে তার জন্য API-র config (পথ ক) |
+| `nginx/api.conf.template` | নিজস্ব Nginx container-এর config (পথ খ) |
 | `.env.production.example` | server-এর `.env`-এর নমুনা (copy করে `.env`) |
-| `init-ssl.sh` | প্রথমবার চালু করা আর HTTPS সার্টিফিকেট |
+| `init-ssl.sh` | নিজস্ব Nginx দিয়ে প্রথমবার চালু আর HTTPS (পথ খ) |
 | `backup-db.sh` | প্রতিদিনের DB backup |

@@ -1,6 +1,14 @@
-# VPS stack: Postgres (PostGIS), Redis, the API and Nginx with Let's Encrypt HTTPS.
-# Run from this folder:  docker compose -f docker-compose.prod.yml up -d --build
-# Only Nginx is reachable from outside (80/443). Settings: deploy/.env (see .env.production.example).
+# VPS stack: Postgres (PostGIS), Redis and the API; HTTPS comes from Nginx in front.
+# Settings: deploy/.env (see .env.production.example). Run from this folder.
+#
+# Two ways to put Nginx in front (see the API README, "VPS-এ চালু করা"):
+#   1. The VPS already runs Nginx for other sites: start without a profile and point that
+#      Nginx at 127.0.0.1:${API_HOST_PORT} (nginx/host-site.conf):
+#        docker compose -f docker-compose.prod.yml up -d --build
+#   2. Nothing else uses ports 80/443: let this stack run its own Nginx + Let's Encrypt:
+#        bash init-ssl.sh        (uses the "bundled-nginx" profile)
+#
+# The API port is bound to 127.0.0.1 only; nothing but Nginx is reachable from outside.
 name: daily-health-prod
 
 services:
@@ -66,9 +74,14 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+    ports:
+      # Localhost only: the VPS's own Nginx proxies to it (way 1).
+      - '127.0.0.1:${API_HOST_PORT:-3010}:3000'
 
+  # Way 2 only (bash init-ssl.sh): our own Nginx when nothing else holds ports 80/443.
   nginx:
     image: nginx:1.27-alpine
+    profiles: ['bundled-nginx']
     restart: unless-stopped
     environment:
       API_DOMAIN: ${API_DOMAIN}
@@ -87,7 +100,7 @@ services:
   # init-ssl.sh and the renewal cron job.
   certbot:
     image: certbot/certbot:v3.0.1
-    profiles: ['tools']
+    profiles: ['bundled-nginx']
     volumes:
       - ./certbot/conf:/etc/letsencrypt
       - ./certbot/www:/var/www/certbot

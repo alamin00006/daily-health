@@ -61,13 +61,14 @@ VPS-এ চালানোর সব ফাইল `deploy/` ফোল্ডা�
 | ফাইল | কাজ |
 |---|---|
 | `Dockerfile` | API-র image |
-| `deploy/docker-compose.prod.yml` | Postgres, Redis, migration, API আর Nginx |
-| `deploy/nginx/api.conf.template` | HTTPS, upload-এর সীমা, Socket.io |
+| `deploy/docker-compose.prod.yml` | Postgres, Redis, migration আর API (চাইলে নিজস্ব Nginx-ও) |
+| `deploy/nginx/host-site.conf` | VPS-এ আগে থেকে Nginx থাকলে তার জন্য API-র config (পথ ক) |
+| `deploy/nginx/api.conf.template` | নিজস্ব Nginx container-এর config (পথ খ) |
 | `deploy/.env.production.example` | server-এর `.env`-এর নমুনা |
-| `deploy/init-ssl.sh` | প্রথমবার চালু করা আর HTTPS সার্টিফিকেট নেওয়া |
+| `deploy/init-ssl.sh` | নিজস্ব Nginx দিয়ে প্রথমবার চালু আর HTTPS (পথ খ) |
 | `deploy/backup-db.sh` | প্রতিদিনের DB backup |
 
-বাইরে থেকে শুধু Nginx দেখা যায় (port 80 আর 443)। Database আর Redis শুধু Docker-এর ভেতরে থাকে।
+বাইরে থেকে শুধু Nginx দেখা যায় (port 80 আর 443)। API শুধু server-এর ভেতরে `127.0.0.1:3010`-এ, Database আর Redis শুধু Docker-এর ভেতরে।
 
 ---
 
@@ -185,6 +186,58 @@ chmod 600 .env
 
 ### ৫. প্রথমবার চালু করা (HTTPS সহ)
 
+আগে দেখুন VPS-এ port 80/443 অন্য কেউ ব্যবহার করছে কিনা:
+
+```bash
+sudo ss -ltnp | grep -E ':80 |:443 '
+```
+
+- কিছু **এলে** (যেমন `nginx`, কারণ এই VPS-এ অন্য website চলছে) → **পথ ক**।
+- কিছু **না এলে** → **পথ খ**।
+
+#### পথ ক: VPS-এ আগে থেকে Nginx আছে (অন্য site চলছে)
+
+আগের site যেমন চলছে তেমনই থাকবে। VPS-এর Nginx-ই আমাদের API-কে পথ দেখাবে।
+
+**১. Stack চালু করুন** (নিজস্ব Nginx ছাড়া):
+
+```bash
+cd ~/daily-health/daily-health/deploy
+docker compose -f docker-compose.prod.yml up -d --build
+curl http://127.0.0.1:3010/api/health      # "status":"ok" আসা উচিত
+```
+
+**২. VPS-এর Nginx-এ এই domain যোগ করুন:**
+
+```bash
+DOMAIN=$(grep '^API_DOMAIN=' .env | cut -d= -f2)
+PORT=$(grep '^API_HOST_PORT=' .env | cut -d= -f2)
+sed "s/__API_DOMAIN__/$DOMAIN/; s/__API_HOST_PORT__/${PORT:-3010}/" nginx/host-site.conf   | sudo tee /etc/nginx/sites-available/$DOMAIN > /dev/null
+sudo ln -s /etc/nginx/sites-available/$DOMAIN /etc/nginx/sites-enabled/$DOMAIN
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+`nginx -t` যদি `ok` আর `successful` না বলে, **reload করবেন না**। Error-টা দেখে ঠিক করুন, নইলে আগের site-ও বন্ধ হতে পারে।
+
+VPS-এ `sites-enabled` ফোল্ডার না থাকলে (`ls /etc/nginx/`) ফাইলটা `/etc/nginx/conf.d/$DOMAIN.conf` নামে রাখুন, `ln` লাগবে না।
+
+**৩. HTTPS সার্টিফিকেট নিন** (VPS-এর certbot দিয়ে):
+
+```bash
+sudo apt install -y certbot python3-certbot-nginx    # আগে থেকে থাকলে লাগবে না
+sudo certbot --nginx -d $DOMAIN
+```
+
+"redirect" জিজ্ঞেস করলে redirect বেছে নিন। Certbot নিজেই নবায়ন করে (systemd timer), তাই ধাপ ৬-এর সার্টিফিকেট-cron এই পথে লাগবে না।
+
+**৪. যাচাই:**
+
+```bash
+curl https://$DOMAIN/api/health
+```
+
+#### পথ খ: VPS-এ আর কোনো web server নেই
+
 ```bash
 bash init-ssl.sh
 ```
@@ -192,7 +245,7 @@ bash init-ssl.sh
 এই script যা করে:
 1. API-র image build করে (প্রথমবার কয়েক মিনিট লাগে)।
 2. Database migration চালায়।
-3. সব কিছু চালু করে।
+3. নিজস্ব Nginx container সহ সব কিছু চালু করে।
 4. Let's Encrypt থেকে বিনা খরচের HTTPS সার্টিফিকেট নেয়।
 
 শেষে যাচাই করুন:
@@ -219,11 +272,11 @@ docker compose -f docker-compose.prod.yml run --rm migrate npm run db:seed
 crontab -e
 ```
 
-এই দুটো লাইন যোগ করুন (`/home/deploy/...` আপনার ঠিকানা অনুযায়ী বদলাবেন):
+এই লাইনগুলো যোগ করুন (`/home/deploy/...` আপনার ঠিকানা অনুযায়ী বদলাবেন; পথ ক-তে প্রথমটা লাগবে না):
 
 ```cron
-# HTTPS সার্টিফিকেট নবায়ন (দিনে দুবার দেখে; মেয়াদ শেষের কাছাকাছি হলে নবায়ন করে)
-17 3,15 * * * cd /home/deploy/daily-health/daily-health/deploy && docker compose -f docker-compose.prod.yml run --rm certbot renew --quiet && docker compose -f docker-compose.prod.yml exec nginx nginx -s reload
+# শুধু পথ খ: HTTPS সার্টিফিকেট নবায়ন (দিনে দুবার দেখে; মেয়াদ শেষের কাছাকাছি হলে নবায়ন করে)
+17 3,15 * * * cd /home/deploy/daily-health/daily-health/deploy && docker compose -f docker-compose.prod.yml --profile bundled-nginx run --rm certbot renew --quiet && docker compose -f docker-compose.prod.yml --profile bundled-nginx exec nginx nginx -s reload
 
 # প্রতিদিন রাত ২:৩০-এ DB backup (১৪ দিন রাখে)
 30 2 * * * /bin/bash /home/deploy/daily-health/daily-health/deploy/backup-db.sh >> /home/deploy/backup.log 2>&1
@@ -242,6 +295,8 @@ docker compose -f docker-compose.prod.yml up -d --build
 ```
 
 নতুন migration থাকলে নিজে থেকেই চলবে, তারপর API নতুন করে চালু হবে।
+
+পথ খ (নিজস্ব Nginx) ব্যবহার করলে command-এ `--profile bundled-nginx` যোগ করবেন, যাতে Nginx-ও চালু থাকে।
 
 ---
 

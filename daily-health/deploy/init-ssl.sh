@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# First start on a new VPS: builds and starts the stack, then gets the Let's Encrypt
-# certificate for API_DOMAIN. Run once from deploy/:  ./init-ssl.sh
-# Needs: deploy/.env filled in, and the domain's DNS A record already pointing here.
+# Way 2 (no other web server on this VPS): builds and starts the stack with its own Nginx,
+# then gets the Let's Encrypt certificate for API_DOMAIN. Run once from deploy/: bash init-ssl.sh
+# Needs: deploy/.env filled in, the domain's DNS A record pointing here, ports 80/443 free.
+# If the VPS already runs Nginx (port 80 "address already in use"), use way 1 instead.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -11,7 +12,7 @@ if [[ -z "$API_DOMAIN" || "$API_DOMAIN" == "api.example.com" ]]; then
   echo "Set API_DOMAIN in deploy/.env first." >&2
   exit 1
 fi
-COMPOSE=(docker compose -f docker-compose.prod.yml)
+COMPOSE=(docker compose -f docker-compose.prod.yml --profile bundled-nginx)
 LIVE="certbot/conf/live/$API_DOMAIN"
 
 mkdir -p certbot/www "$LIVE"
