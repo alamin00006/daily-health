@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { bangladeshPhoneSchema } from './common-fields.contract.js';
 
 /**
  * App-wide look set by admins in the panel: the primary (brand) colour of the
@@ -39,6 +40,8 @@ export type PrimaryPalette = Record<PrimaryShade, string> & { mint: string; soft
 export interface AppConfigResponse {
   primaryColor: string;
   palette: PrimaryPalette;
+  /** Support buttons on the account page; null = hidden (Roadmap doc, 2026-11-28). */
+  support: { whatsApp: string | null; hotline: string | null };
   updatedAt: string;
 }
 
@@ -117,3 +120,35 @@ export function primaryPalette(primary: string): PrimaryPalette {
     soft: mix(p, '#ffffff', 0.89),
   };
 }
+
+// PATCH /api/v1/admin/app-config/support (ADMIN): null hides a button
+export const updateSupportContactsRequestSchema = z.object({
+  whatsApp: bangladeshPhoneSchema.nullable(),
+  hotline: z
+    .string()
+    .trim()
+    .regex(/^\+?[0-9-]{3,20}$/, 'Digits only, like 16263 or 09612-345678')
+    .nullable(),
+});
+export type UpdateSupportContactsRequest = z.infer<typeof updateSupportContactsRequestSchema>;
+
+// ---------------------------------------------------------------------------
+// Terms and privacy policy (written in the panel, read in the app)
+// ---------------------------------------------------------------------------
+
+export const legalPageSlugSchema = z.enum(['TERMS', 'PRIVACY']);
+export type LegalPageSlug = z.infer<typeof legalPageSlugSchema>;
+
+// GET /api/v1/legal/:slug (public, guests too)
+export interface LegalPageResponse {
+  slug: LegalPageSlug;
+  /** Plain text, blank lines between paragraphs; null until an admin writes it. */
+  body: string | null;
+  updatedAt: string | null;
+}
+
+// PUT /api/v1/admin/legal/:slug (ADMIN)
+export const updateLegalPageRequestSchema = z.object({
+  body: z.string().trim().min(20).max(50_000),
+});
+export type UpdateLegalPageRequest = z.infer<typeof updateLegalPageRequestSchema>;

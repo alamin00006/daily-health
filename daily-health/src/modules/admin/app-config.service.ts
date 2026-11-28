@@ -8,12 +8,19 @@ import {
   type AdminAppConfigResponse,
   type AppConfigChangeResponse,
   type AppConfigResponse,
+  type LegalPageResponse,
+  type LegalPageSlug,
   type UpdateAppConfigRequest,
+  type UpdateLegalPageRequest,
+  type UpdateSupportContactsRequest,
 } from '../../shared-contracts/app-config.contract.js';
 import type { PaginatedResponse, PaginationQuery } from '../../shared-contracts/common-fields.contract.js';
 import { StaffDirectoryService } from './staff-directory.service.js';
 
-/** The app's look (primary colour), one row set by admins; every change is kept. */
+/**
+ * The app's look (primary colour; every change is kept), the support numbers on the
+ * account page, and the terms and privacy policy. All set by admins.
+ */
 @Injectable()
 export class AppConfigService {
   constructor(
@@ -46,6 +53,30 @@ export class AppConfigService {
     return this.adminGet();
   }
 
+  /** WhatsApp and hotline numbers on the app's account page; null hides a button. */
+  async updateSupport(userId: string, input: UpdateSupportContactsRequest): Promise<AdminAppConfigResponse> {
+    await this.row();
+    await this.prisma.appSetting.update({
+      where: { id: 1 },
+      data: { supportWhatsApp: input.whatsApp, supportHotline: input.hotline, updatedByUserId: userId },
+    });
+    return this.adminGet();
+  }
+
+  async legalPage(slug: LegalPageSlug): Promise<LegalPageResponse> {
+    const page = await this.prisma.legalPage.findUnique({ where: { slug } });
+    return { slug, body: page?.body ?? null, updatedAt: page?.updatedAt.toISOString() ?? null };
+  }
+
+  async updateLegalPage(userId: string, slug: LegalPageSlug, input: UpdateLegalPageRequest): Promise<LegalPageResponse> {
+    const page = await this.prisma.legalPage.upsert({
+      where: { slug },
+      create: { slug, body: input.body, updatedByUserId: userId },
+      update: { body: input.body, updatedByUserId: userId },
+    });
+    return { slug, body: page.body, updatedAt: page.updatedAt.toISOString() };
+  }
+
   async history(query: PaginationQuery): Promise<PaginatedResponse<AppConfigChangeResponse>> {
     const rows = await this.prisma.appSettingChange.findMany({
       where: afterCursor('createdAt', query.cursor),
@@ -73,5 +104,10 @@ export class AppConfigService {
 
 function view(row: AppSetting): AppConfigResponse {
   const primaryColor = row.primaryColor || DEFAULT_PRIMARY_COLOR;
-  return { primaryColor, palette: primaryPalette(primaryColor), updatedAt: row.updatedAt.toISOString() };
+  return {
+    primaryColor,
+    palette: primaryPalette(primaryColor),
+    support: { whatsApp: row.supportWhatsApp, hotline: row.supportHotline },
+    updatedAt: row.updatedAt.toISOString(),
+  };
 }

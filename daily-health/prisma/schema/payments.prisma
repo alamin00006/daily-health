@@ -112,7 +112,12 @@ model Payment {
   providerId        String?            @db.Uuid
   /// "ডা. ফারহানা ইসলাম, চেম্বার ১১ নভেম্বর"
   description       String
+  /// What the payer is charged (listAmount minus discountAmount).
   amount            Decimal            @db.Decimal(10, 2)
+  /// The price before any coupon; provider earnings are worked out from this.
+  listAmount        Decimal            @db.Decimal(10, 2)
+  /// Coupon discount, paid for by the platform (owner's decision, 2026-11-27).
+  discountAmount    Decimal            @default(0) @db.Decimal(10, 2)
   currency          String             @default("BDT")
   gateway           PaymentGatewayName
   method            PaymentMethod?
@@ -133,6 +138,7 @@ model Payment {
   transactions GatewayTransaction[]
   refunds      Refund[]
   earnings     ProviderEarning[]
+  redemption   CouponRedemption?
 
   @@index([payerUserId, createdAt(sort: Desc)])
   @@index([patientId, createdAt(sort: Desc)])
@@ -253,5 +259,106 @@ model ProviderPayoutAccount {
   createdAt          DateTime     @default(now()) @db.Timestamptz(3)
   updatedAt          DateTime     @updatedAt @db.Timestamptz(3)
 
+  @@schema("payments")
+}
+
+enum CouponDiscountType {
+  /// discountValue is a percentage (1–100), capped by maxDiscount when set.
+  PERCENT
+  /// discountValue is a fixed amount in BDT.
+  FLAT
+
+  @@schema("payments")
+}
+
+enum CouponClaimSource {
+  /// Typed into the sign-up form (Roadmap doc, 2026-11-26).
+  SIGNUP
+
+  @@schema("payments")
+}
+
+/// A discount code made by admins in the panel. People claim it (at sign-up for now);
+/// a claim is spent on a later payment.
+model Coupon {
+  id              String             @id @default(uuid(7)) @db.Uuid
+  /// "WELCOME50": uppercase letters, digits and "-", 3–32 chars (CHECK in the migration).
+  code            String             @unique
+  /// Shown to the person: "নতুনদের জন্য ৫০ টাকা ছাড়"
+  title           String
+  discountType    CouponDiscountType
+  discountValue   Decimal            @db.Decimal(10, 2)
+  /// Cap for a PERCENT coupon.
+  maxDiscount     Decimal?           @db.Decimal(10, 2)
+  /// The payment must be at least this much.
+  minAmount       Decimal?           @db.Decimal(10, 2)
+  /// What it can pay for; empty = everything.
+  appliesTo       PaymentPurpose[]
+  startsAt        DateTime?          @db.Timestamptz(3)
+  endsAt          DateTime?          @db.Timestamptz(3)
+  /// How many people can claim it; null = no limit.
+  maxClaims       Int?
+  claimCount      Int                @default(0)
+  /// Payments one claim can be used on.
+  usesPerClaim    Int                @default(1)
+  isActive        Boolean            @default(true)
+  /// ref auth.User
+  createdByUserId String             @db.Uuid
+  createdAt       DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime           @updatedAt @db.Timestamptz(3)
+
+  claims      CouponClaim[]
+  redemptions CouponRedemption[]
+
+  @@index([createdAt(sort: Desc)])
+  @@schema("payments")
+}
+
+/// One person's claim on a coupon; one per coupon and person.
+model CouponClaim {
+  id        String            @id @default(uuid(7)) @db.Uuid
+  couponId  String            @db.Uuid
+  coupon    Coupon            @relation(fields: [couponId], references: [id], onDelete: Restrict)
+  /// ref auth.User
+  userId    String            @db.Uuid
+  source    CouponClaimSource
+  usesLeft  Int
+  claimedAt DateTime          @default(now()) @db.Timestamptz(3)
+
+  redemptions CouponRedemption[]
+
+  @@unique([couponId, userId])
+  @@index([userId, claimedAt(sort: Desc)])
+  @@schema("payments")
+}
+
+enum CouponRedemptionStatus {
+  /// The checkout is open; the use is held.
+  RESERVED
+  /// The payment went through.
+  USED
+  /// The payment failed, was abandoned or fully refunded; the use went back to the claim.
+  RELEASED
+
+  @@schema("payments")
+}
+
+/// One use of a claim on one payment. Holding the use while the checkout is open
+/// stops one claim being spent on two payments at once.
+model CouponRedemption {
+  id             String                 @id @default(uuid(7)) @db.Uuid
+  claimId        String                 @db.Uuid
+  claim          CouponClaim            @relation(fields: [claimId], references: [id], onDelete: Restrict)
+  couponId       String                 @db.Uuid
+  coupon         Coupon                 @relation(fields: [couponId], references: [id], onDelete: Restrict)
+  paymentId      String                 @unique @db.Uuid
+  payment        Payment                @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  discountAmount Decimal                @db.Decimal(10, 2)
+  status         CouponRedemptionStatus @default(RESERVED)
+  createdAt      DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime               @updatedAt @db.Timestamptz(3)
+
+  @@index([claimId])
+  @@index([couponId, status])
   @@schema("payments")
 }

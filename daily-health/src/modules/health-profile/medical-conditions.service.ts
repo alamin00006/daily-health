@@ -11,9 +11,12 @@ import type {
 import type { PaginatedResponse } from '../../shared-contracts/common-fields.contract.js';
 import type {
   CreateConditionRequest,
+  HealthIntakeRequest,
   MedicalConditionResponse,
   UpdateConditionRequest,
 } from '../../shared-contracts/health.contract.js';
+import type { PatientProfileResponse } from '../../shared-contracts/profiles.contract.js';
+import { PatientProfilesService } from '../users/patient-profiles.service.js';
 import type { ProfileAccess } from '../users/profile-access.service.js';
 import { HealthProfileErrorCode } from './health-profile-error-codes.js';
 
@@ -27,7 +30,54 @@ export class MedicalConditionsService {
     private readonly prisma: PrismaService,
     private readonly encryption: ColumnEncryptionService,
     private readonly events: EventEmitter2,
+    private readonly profiles: PatientProfilesService,
   ) {}
+
+  /**
+   * "Complete your profile" (Roadmap doc, 2026-11-28): the long-term illnesses become
+   * CHRONIC conditions (an illness already on the profile is not added twice), then the
+   * profile gets its name, gender, birth date and the completion time.
+   */
+  async intake(
+    userId: string,
+    access: ProfileAccess,
+    input: HealthIntakeRequest,
+  ): Promise<PatientProfileResponse> {
+    if (input.conditions.length > 0) {
+      const existing = await this.prisma.medicalCondition.findMany({
+        where: { patientId: access.profile.id, kind: 'CHRONIC' },
+        select: { name: true },
+      });
+      const known = new Set(
+        existing.map((row) => normaliseName(this.encryption.decrypt(row.name, NAME_CONTEXT))),
+      );
+      const fresh = input.conditions.filter((c) => {
+        const key = normaliseName(c.name);
+        if (known.has(key)) return false;
+        known.add(key);
+        return true;
+      });
+      if (fresh.length > 0) {
+        await this.prisma.medicalCondition.createMany({
+          data: fresh.map((c) => ({
+            patientId: access.profile.id,
+            kind: 'CHRONIC' as const,
+            name: this.encryption.encrypt(c.name, NAME_CONTEXT),
+            since: c.durationMonths === null ? null : monthsAgo(c.durationMonths),
+          })),
+        });
+        this.audit(userId, access, 'condition.create', access.profile.id, {
+          kind: 'CHRONIC',
+          count: String(fresh.length),
+        });
+      }
+    }
+    return this.profiles.completeHealthInfo(userId, access, {
+      fullName: input.fullName,
+      gender: input.gender,
+      dateOfBirth: input.dateOfBirth,
+    });
+  }
 
   async create(
     userId: string,
@@ -206,4 +256,14 @@ function conditionNotFound(): AppException {
     'Condition not found',
     HttpStatus.NOT_FOUND,
   );
+}
+
+/** "ডায়াবেটিস " and "ডায়াবেটিস" are the same illness. */
+function normaliseName(name: string): string {
+  return name.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+/** The first of the month `months` ago (Asia/Dhaka calendar is close enough for "since"). */
+function monthsAgo(months: number, now = new Date()): Date {
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - months, 1));
 }

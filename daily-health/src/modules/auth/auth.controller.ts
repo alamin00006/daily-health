@@ -88,7 +88,7 @@ export class AuthController {
   signup(
     @Body(new ZodValidationPipe(signupRequestSchema)) body: SignupRequest,
   ): Promise<AuthTokensResponse> {
-    return this.auth.signup(body.verificationToken, body.password, body.device);
+    return this.auth.signup(body);
   }
 
   @PublicRoute()

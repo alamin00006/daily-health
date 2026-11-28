@@ -26,6 +26,17 @@ model MedicalFile {
   sizeBytes        Int
   /// Date on the report itself (Asia/Dhaka calendar), not the upload date.
   reportDate       DateTime?       @db.Date
+  /// Lab test from the catalog ("CBC", "HBA1C"…; "OTHER" = typed name in `title`).
+  /// Plain so reports can be grouped by test (Roadmap doc, 2026-11-28).
+  testCode         String?
+  /// enc: records.MedicalFile.institute (lab, hospital or chamber)
+  institute        Bytes?
+  /// enc: records.MedicalFile.purpose (the illness or reason for the test)
+  purpose          Bytes?
+  /// enc: records.MedicalFile.consultantName (the doctor who asked for it / wrote it)
+  consultantName   Bytes?
+  /// enc: records.MedicalFile.note
+  note             Bytes?
   /// ref auth.User
   uploadedByUserId String          @db.Uuid
   /// Soft delete: the stored files are removed, the row stays for the audit trail.
@@ -36,6 +47,7 @@ model MedicalFile {
   shares MedicalFileShare[]
 
   @@index([patientId, createdAt])
+  @@index([patientId, testCode, reportDate])
   @@schema("records")
 }
 
@@ -54,6 +66,26 @@ model MedicalFileShare {
   file MedicalFile @relation(fields: [fileId], references: [id], onDelete: Cascade)
 
   @@index([fileId])
+  @@index([providerId, expiresAt])
+  @@schema("records")
+}
+
+/// A patient lets a doctor see their whole file history (reports, prescriptions, imaging)
+/// for a while, from the app (Roadmap doc, 2026-11-28). One live share per doctor.
+model RecordShare {
+  id              String    @id @default(uuid(7)) @db.Uuid
+  /// ref users.PatientProfile
+  patientId       String    @db.Uuid
+  /// ref providers.Provider
+  providerId      String    @db.Uuid
+  /// ref auth.User
+  grantedByUserId String    @db.Uuid
+  expiresAt       DateTime  @db.Timestamptz(3)
+  revokedAt       DateTime? @db.Timestamptz(3)
+  createdAt       DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime  @updatedAt @db.Timestamptz(3)
+
+  @@index([patientId, createdAt(sort: Desc)])
   @@index([providerId, expiresAt])
   @@schema("records")
 }

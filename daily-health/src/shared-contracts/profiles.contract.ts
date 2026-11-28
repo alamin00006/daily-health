@@ -25,7 +25,7 @@ export const profileRelationSchema = z.enum([
 export type ProfileRole = z.infer<typeof profileRoleSchema>;
 export type ProfileRelation = z.infer<typeof profileRelationSchema>;
 
-const dateOfBirthSchema = calendarDateSchema.refine(
+export const dateOfBirthSchema = calendarDateSchema.refine(
   (date) =>
     date >= '1900-01-01' && date <= new Date().toISOString().slice(0, 10),
   { message: 'Date of birth must be between 1900-01-01 and today' },
@@ -76,6 +76,11 @@ export interface PatientProfileResponse {
   myRole: ProfileRole;
   myRelation: ProfileRelation;
   receivesAlerts: boolean;
+  /**
+   * When the "complete your profile" form was answered (POST …/health-intake). The app
+   * keeps most features closed while the own (SELF) profile has none (Roadmap doc).
+   */
+  healthInfoCompletedAt: string | null;
   createdAt: string;
 }
 

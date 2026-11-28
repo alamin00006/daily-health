@@ -14,8 +14,10 @@ import type {
 import type { DeviceInfo } from '../../shared-contracts/common-fields.contract.js';
 import {
   AUTH_OTP_SMS_EVENT,
+  USER_SIGNED_UP_EVENT,
   type AccountIdentifier,
   type AuthOtpSmsEvent,
+  type UserSignedUpEvent,
   channelOfDestination,
   userWhereDestination,
 } from './account-identifier.js';
@@ -115,18 +117,22 @@ export class AuthService {
     return { verificationToken: token, expiresInSec };
   }
 
-  async signup(
-    verificationToken: string,
-    password: string,
-    device: DeviceInfo,
-  ): Promise<AuthTokensResponse> {
+  async signup(input: {
+    verificationToken: string;
+    password: string;
+    fullName?: string;
+    /** Extra, unverified contact email for a phone sign-up. */
+    email?: string;
+    couponCode?: string;
+    device: DeviceInfo;
+  }): Promise<AuthTokensResponse> {
     const verified = this.verificationTokens.verify(
-      verificationToken,
+      input.verificationToken,
       'SIGNUP',
     );
-    const passwordHash = await this.passwords.hash(password);
+    const passwordHash = await this.passwords.hash(input.password);
 
-    return this.prisma.$transaction(async (tx) => {
+    const tokens = await this.prisma.$transaction(async (tx) => {
       await this.otpCodes.consumeVerification(
         tx,
         verified.otpId,
@@ -136,9 +142,13 @@ export class AuthService {
       const byPhone = channelOfDestination(verified.destination) === 'SMS';
       const existing = await tx.user.findUnique({
         where: userWhereDestination(verified.destination),
-        select: { id: true },
+        select: { id: true, emailVerifiedAt: true },
       });
-      if (existing) {
+      if (existing && !byPhone && existing.emailVerifiedAt === null) {
+        // Someone typed this address into a phone sign-up without proving it. The
+        // person who just proved it wins: the address moves to the new account.
+        await tx.user.update({ where: { id: existing.id }, data: { email: null } });
+      } else if (existing) {
         throw new AppException(
           byPhone
             ? AuthErrorCode.PHONE_ALREADY_REGISTERED
@@ -150,19 +160,50 @@ export class AuthService {
         );
       }
 
+      const contactEmail = byPhone ? input.email : undefined;
+      if (contactEmail) {
+        const emailTaken = await tx.user.findUnique({
+          where: { email: contactEmail },
+          select: { id: true },
+        });
+        if (emailTaken) {
+          throw new AppException(
+            AuthErrorCode.EMAIL_ALREADY_REGISTERED,
+            'An account with this email already exists',
+            HttpStatus.CONFLICT,
+          );
+        }
+      }
+
       const now = new Date();
+      const fullName = input.fullName ?? null;
       const user = await tx.user.create({
         data: byPhone
-          ? { phone: verified.destination, passwordHash, lastLoginAt: now }
+          ? {
+              phone: verified.destination,
+              email: contactEmail ?? null,
+              fullName,
+              passwordHash,
+              lastLoginAt: now,
+            }
           : {
               email: verified.destination,
               emailVerifiedAt: now,
+              fullName,
               passwordHash,
               lastLoginAt: now,
             },
       });
-      return this.sessions.startSession(user, device, tx);
+      return this.sessions.startSession(user, input.device, tx);
     });
+
+    // After the commit: payments claims the coupon (it re-checks the code itself).
+    const event: UserSignedUpEvent = {
+      userId: tokens.user.id,
+      couponCode: input.couponCode ?? null,
+    };
+    this.events.emit(USER_SIGNED_UP_EVENT, event);
+    return tokens;
   }
 
   async loginWithPassword(
@@ -212,7 +253,7 @@ export class AuthService {
       const user = await tx.user.findUnique({
         where: userWhereDestination(verified.destination),
       });
-      if (!user || user.isGuest) throw invalidCredentials();
+      if (!user || !canSignInWith(user, verified.destination)) throw invalidCredentials();
       assertActive(user);
 
       // Proving the email / phone also clears a password lockout.
@@ -250,7 +291,7 @@ export class AuthService {
       const user = await tx.user.findUnique({
         where: userWhereDestination(verified.destination),
       });
-      if (!user || user.isGuest) throw invalidCredentials();
+      if (!user || !canSignInWith(user, verified.destination)) throw invalidCredentials();
       assertActive(user);
 
       const updated = await tx.user.update({
@@ -320,11 +361,15 @@ export class AuthService {
     return this.sessions.updatePushToken(sessionId, pushToken);
   }
 
+  /**
+   * The account this email / phone signs in to. An email typed into a phone sign-up is
+   * not proven, so it never signs anyone in (nor blocks the real owner's sign-up).
+   */
   private async findRegistered(destination: string): Promise<User | null> {
     const user = await this.prisma.user.findUnique({
       where: userWhereDestination(destination),
     });
-    return user && !user.isGuest ? user : null;
+    return user && canSignInWith(user, destination) ? user : null;
   }
 
   /** Hands the SMS to the notifications module, which sends it and logs failures. */
@@ -367,6 +412,14 @@ export class AuthService {
       });
     }
   }
+}
+
+function canSignInWith(
+  user: Pick<User, 'isGuest' | 'emailVerifiedAt'>,
+  destination: string,
+): boolean {
+  if (user.isGuest) return false;
+  return channelOfDestination(destination) === 'SMS' || user.emailVerifiedAt !== null;
 }
 
 function assertActive(user: Pick<User, 'status'>): void {

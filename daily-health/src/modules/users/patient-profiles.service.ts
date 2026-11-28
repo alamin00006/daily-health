@@ -152,6 +152,35 @@ export class PatientProfilesService {
   }
 
   /**
+   * The "complete your profile" answers that live on the profile (name, gender, birth
+   * date) and the moment it was completed (Roadmap doc, 2026-11-28). Called by the
+   * health-profile module, which saves the illnesses; access was checked by the caller.
+   */
+  async completeHealthInfo(
+    userId: string,
+    access: ProfileAccess,
+    input: { fullName: string; gender: PatientProfile['gender']; dateOfBirth: string },
+  ): Promise<PatientProfileResponse> {
+    const profile = await this.prisma.patientProfile.update({
+      where: { id: access.profile.id },
+      data: {
+        fullName: input.fullName,
+        gender: input.gender,
+        dateOfBirth: new Date(`${input.dateOfBirth}T00:00:00.000Z`),
+        healthInfoCompletedAt: new Date(),
+      },
+    });
+    emitAuditEvent(this.events, {
+      actorUserId: userId,
+      patientId: profile.id,
+      action: 'profile.health-intake',
+      entityType: 'PatientProfile',
+      entityId: profile.id,
+    });
+    return this.toResponse(profile, access.membership);
+  }
+
+  /**
    * Replaces the profile photo (OWNER, CAREGIVER). Cropped to a square WebP
    * with thumbnails and stored privately; the old photo is deleted afterwards.
    */
@@ -324,6 +353,7 @@ export class PatientProfilesService {
       myRole: member.role,
       myRelation: member.relation,
       receivesAlerts: member.receivesAlerts,
+      healthInfoCompletedAt: profile.healthInfoCompletedAt?.toISOString() ?? null,
       createdAt: profile.createdAt.toISOString(),
     };
   }

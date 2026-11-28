@@ -5,6 +5,8 @@ import { AuthModule } from '../auth/auth.module.js';
 import { DoctorsModule } from '../doctors/doctors.module.js';
 import { NotificationsModule } from '../notifications/notifications.module.js';
 import { UsersModule } from '../users/users.module.js';
+import { AdminCouponsController, CouponsController } from './coupons.controller.js';
+import { CouponsService } from './coupons.service.js';
 import { AdminPaymentsController, MyEarningsController } from './earnings.controller.js';
 import { EarningsService } from './earnings.service.js';
 import { ShurjoPayGatewayService } from './gateways/shurjopay-gateway.service.js';
@@ -34,7 +36,13 @@ import { RefundsService } from './refunds.service.js';
     NotificationsModule,
     BullModule.registerQueue({ name: PAYMENT_MAINTENANCE_QUEUE }),
   ],
-  controllers: [PaymentsController, MyEarningsController, AdminPaymentsController],
+  controllers: [
+    PaymentsController,
+    MyEarningsController,
+    AdminPaymentsController,
+    CouponsController,
+    AdminCouponsController,
+  ],
   providers: [
     ShurjoPayGatewayService,
     SslCommerzGatewayService,
@@ -43,9 +51,10 @@ import { RefundsService } from './refunds.service.js';
     PaymentsService,
     RefundsService,
     EarningsService,
+    CouponsService,
     PaymentMaintenanceProcessor,
     StaffRoleGuard,
   ],
-  exports: [PayableRegistryService, PaymentsService, RefundsService],
+  exports: [PayableRegistryService, PaymentsService, RefundsService, CouponsService],
 })
 export class PaymentsModule {}

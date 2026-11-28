@@ -35,3 +35,14 @@ export interface AuthOtpSmsEvent {
   phone: string;
   text: string;
 }
+
+/**
+ * Emitted after a new account is committed. Payments claims `couponCode` from it
+ * (payments imports auth, so auth cannot call payments directly).
+ */
+export const USER_SIGNED_UP_EVENT = 'auth.user-signed-up';
+export interface UserSignedUpEvent {
+  userId: string;
+  /** Uppercased; null when the form had none. */
+  couponCode: string | null;
+}

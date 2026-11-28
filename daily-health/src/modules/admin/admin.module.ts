@@ -8,7 +8,14 @@ import { PaymentsModule } from '../payments/payments.module.js';
 import { UsersModule } from '../users/users.module.js';
 import { AdminDashboardService } from './admin-dashboard.service.js';
 import { AdminController } from './admin.controller.js';
-import { AdminAppConfigController, AppConfigController } from './app-config.controller.js';
+import {
+  AdminAppConfigController,
+    AdminSupportAndLegalController,
+    LegalPagesController,
+  AdminSupportAndLegalController,
+  AppConfigController,
+  LegalPagesController,
+} from './app-config.controller.js';
 import { AppConfigService } from './app-config.service.js';
 import { AuditLogWriterService } from './audit-log-writer.service.js';
 import { AuditLogsService } from './audit-logs.service.js';

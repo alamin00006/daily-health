@@ -22,6 +22,7 @@ import {
   flowSchema,
   moodSchema,
   symptomSchema,
+  womensAboutMeSchema,
   type CreatePeriodRequest,
   type CycleOverviewResponse,
   type CycleSettingsResponse,
@@ -33,6 +34,7 @@ import {
   type StartPregnancyRequest,
   type UpdateCycleSettingsRequest,
   type UpdatePeriodRequest,
+  type WomensAboutMe,
 } from '../../shared-contracts/womens-health.contract.js';
 import type { ProfileAccess } from '../users/profile-access.service.js';
 import {
@@ -47,6 +49,7 @@ import { WomensHealthErrorCode } from './womens-health-error-codes.js';
 
 const ENC = {
   goal: 'womens_health.CycleSettings.goal',
+  aboutMe: 'womens_health.CycleSettings.aboutMe',
   endDate: 'womens_health.PeriodCycle.endDate',
   flow: 'womens_health.DailyLog.flow',
   mood: 'womens_health.DailyLog.mood',
@@ -123,6 +126,9 @@ export class WomensHealthService {
       ...(input.goal !== undefined ? { goal: this.encryption.encrypt(input.goal, ENC.goal) } : {}),
       ...(input.appLockEnabled !== undefined ? { appLockEnabled: input.appLockEnabled } : {}),
       ...(input.remindersOn !== undefined ? { remindersOn: input.remindersOn } : {}),
+      ...(input.aboutMe !== undefined
+        ? { aboutMe: this.encryption.encrypt(JSON.stringify(input.aboutMe), ENC.aboutMe) }
+        : {}),
     };
     const row = await this.prisma.cycleSettings.upsert({
       where: { patientId },
@@ -413,7 +419,7 @@ export class WomensHealthService {
 
   private settingsResponse(row: CycleSettings | null): CycleSettingsResponse {
     if (!row) {
-      return { ...DEFAULT_SETTINGS, goal: 'TRACK', appLockEnabled: false, remindersOn: true };
+      return { ...DEFAULT_SETTINGS, goal: 'TRACK', appLockEnabled: false, remindersOn: true, aboutMe: null };
     }
     const goal = cycleGoalSchema.safeParse(this.encryption.decryptNullable(row.goal, ENC.goal));
     return {
@@ -422,7 +428,19 @@ export class WomensHealthService {
       goal: goal.success ? goal.data : 'TRACK',
       appLockEnabled: row.appLockEnabled,
       remindersOn: row.remindersOn,
+      aboutMe: this.decryptAboutMe(row.aboutMe),
     };
+  }
+
+  private decryptAboutMe(value: Uint8Array | null): WomensAboutMe | null {
+    const text = this.encryption.decryptNullable(value, ENC.aboutMe);
+    if (!text) return null;
+    try {
+      const parsed = womensAboutMeSchema.safeParse(JSON.parse(text));
+      return parsed.success ? parsed.data : null;
+    } catch {
+      return null;
+    }
   }
 
   private logResponse(row: DailyLog): DailyLogResponse {

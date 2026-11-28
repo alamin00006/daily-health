@@ -3,7 +3,7 @@ import {
   calendarDateSchema,
   paginationQuerySchema,
 } from './common-fields.contract.js';
-import { bloodGroupSchema, genderSchema } from './profiles.contract.js';
+import { bloodGroupSchema, dateOfBirthSchema, genderSchema } from './profiles.contract.js';
 
 export const vitalTypeSchema = z.enum([
   'BP',
@@ -234,3 +234,57 @@ export interface HealthCardScanResponse {
   allergies: string[];
   surgeries: string[];
 }
+
+// ---------------------------------------------------------------------------
+// "Complete your profile" (Roadmap doc, 2026-11-28)
+// ---------------------------------------------------------------------------
+
+/**
+ * Common long-term illnesses for the profile form; "অন্যান্য" lets people type one.
+ * Saved as CHRONIC conditions by name, so the list can change freely.
+ */
+export const COMMON_CONDITIONS = [
+  'ডায়াবেটিস',
+  'উচ্চ রক্তচাপ',
+  'হৃদরোগ',
+  'হাঁপানি / শ্বাসকষ্ট',
+  'থাইরয়েডের সমস্যা',
+  'কিডনির রোগ',
+  'লিভারের রোগ',
+  'গ্যাস্ট্রিক / আলসার',
+  'বাত / আর্থ্রাইটিস',
+  'উচ্চ কোলেস্টেরল',
+  'স্ট্রোক',
+  'ক্যান্সার',
+  'মানসিক চাপ / বিষণ্ণতা',
+  'মাইগ্রেন',
+  'পিসিওএস',
+  'রক্তস্বল্পতা',
+  'সিওপিডি',
+  'মৃগী',
+] as const;
+
+export const intakeConditionSchema = z.object({
+  name: z.string().trim().min(2).max(120),
+  /** How long it has been going on, in whole months (a year = 12); null = not given. */
+  durationMonths: z.number().int().min(0).max(1200).nullable(),
+});
+export type IntakeCondition = z.infer<typeof intakeConditionSchema>;
+
+// POST /api/v1/profiles/:profileId/health-intake (OWNER, CAREGIVER)
+export const healthIntakeRequestSchema = z
+  .object({
+    fullName: z.string().trim().min(2).max(100),
+    gender: genderSchema,
+    /** Age comes from this. */
+    dateOfBirth: dateOfBirthSchema,
+    /** Long-term illnesses; empty only with `noConditions`. */
+    conditions: z.array(intakeConditionSchema).max(20),
+    /** "কোনো রোগ নেই". */
+    noConditions: z.boolean(),
+  })
+  .refine((body) => body.noConditions !== body.conditions.length > 0, {
+    path: ['conditions'],
+    message: 'Pick at least one illness, or say there is none',
+  });
+export type HealthIntakeRequest = z.infer<typeof healthIntakeRequestSchema>;

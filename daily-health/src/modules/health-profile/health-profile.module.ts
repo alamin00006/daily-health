@@ -5,6 +5,7 @@ import {
   HealthCardsController,
 } from './health-cards.controller.js';
 import { HealthCardsService } from './health-cards.service.js';
+import { HealthIntakeController } from './health-intake.controller.js';
 import { MedicalConditionsController } from './medical-conditions.controller.js';
 import { MedicalConditionsService } from './medical-conditions.service.js';
 import { VitalReadingsController } from './vital-readings.controller.js';
@@ -16,6 +17,7 @@ import { VitalReadingsService } from './vital-readings.service.js';
   controllers: [
     VitalReadingsController,
     MedicalConditionsController,
+    HealthIntakeController,
     HealthCardsController,
     HealthCardScanController,
   ],

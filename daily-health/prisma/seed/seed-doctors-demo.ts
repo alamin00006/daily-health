@@ -561,6 +561,7 @@ export async function seedDoctorsDemo(
         providerId: appointment.providerId,
         description: `${description} (${appointment.code})`,
         amount: appointment.fee,
+        listAmount: appointment.fee,
         gateway: 'SHURJOPAY',
         method: 'BKASH',
         status: 'SUCCESS',

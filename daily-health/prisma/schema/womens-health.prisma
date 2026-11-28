@@ -20,6 +20,9 @@ model CycleSettings {
   /// The PIN itself stays on the phone (expo-secure-store).
   appLockEnabled Boolean  @default(false)
   remindersOn    Boolean  @default(true)
+  /// enc: {"maritalStatus":"MARRIED","children":"ONE","pregnant":false}: the women's
+  /// profile answered on first entry (Roadmap doc, 2026-11-28).
+  aboutMe        Bytes?
   updatedAt      DateTime @updatedAt @db.Timestamptz(3)
 
   @@schema("womens_health")

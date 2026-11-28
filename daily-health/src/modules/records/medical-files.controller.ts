@@ -29,6 +29,7 @@ import {
   listMedicalFilesQuerySchema,
   updateMedicalFileRequestSchema,
   uploadMedicalFileFieldsSchema,
+  type LabTestSummaryResponse,
   type ListMedicalFilesQuery,
   type MedicalFileResponse,
   type UpdateMedicalFileRequest,
@@ -56,7 +57,7 @@ export class MedicalFilesController {
   @SingleFileUpload(uploadMedicalFileFieldsSchema)
   @ApiOperation({
     summary:
-      'Upload a report or prescription: JPEG/PNG/WebP (stored as WebP) or PDF, max 10 MB (OWNER, CAREGIVER)',
+      'Upload a report or prescription: JPEG/PNG/WebP (stored as WebP) or PDF; reports and prescriptions up to 5 MB with all details but the note, other files 10 MB (OWNER, CAREGIVER)',
   })
   upload(
     @CurrentUser() user: AuthenticatedUser,
@@ -85,6 +86,17 @@ export class MedicalFilesController {
     return this.files.list(user.userId, access, query);
   }
 
+  // Declared before ':fileId' so "tests" is not read as a file id.
+  @Get('tests')
+  @RequireProfileAccess(ProfileAction.VIEW)
+  @ApiOperation({ summary: 'Lab reports grouped by test, newest first' })
+  tests(
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentProfileAccess() access: ProfileAccess,
+  ): Promise<LabTestSummaryResponse[]> {
+    return this.files.testSummary(user.userId, access);
+  }
+
   @Get(':fileId')
   @RequireProfileAccess(ProfileAction.VIEW)
   @ApiOperation({ summary: 'One file with fresh signed URLs' })
@@ -99,7 +111,7 @@ export class MedicalFilesController {
   @Patch(':fileId')
   @RequireProfileAccess(ProfileAction.EDIT)
   @ApiOperation({
-    summary: 'Change title, type or report date (OWNER, CAREGIVER)',
+    summary: 'Change the title, test, report date or details (OWNER, CAREGIVER)',
   })
   @ApiZodBody(updateMedicalFileRequestSchema)
   update(

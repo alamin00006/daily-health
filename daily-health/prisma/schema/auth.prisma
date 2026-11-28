@@ -51,6 +51,9 @@ model User {
   emailVerifiedAt        DateTime?  @db.Timestamptz(3)
   /// E.164 (+8801XXXXXXXXX). Unique when set; stored after an SMS code is verified.
   phone                  String?    @unique
+  /// Name typed at sign-up; the default name when the person's own profile is made.
+  /// Null for guests and accounts opened before 2026-11-26.
+  fullName               String?
   /// argon2id hash of the login password; null for guests.
   passwordHash           String?
   role                   UserRole   @default(PATIENT)

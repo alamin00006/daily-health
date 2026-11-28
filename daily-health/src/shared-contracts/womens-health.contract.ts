@@ -36,7 +36,22 @@ export type CyclePhase = 'PERIOD' | 'FOLLICULAR' | 'FERTILE' | 'LUTEAL' | 'LATE'
 // Settings
 // ---------------------------------------------------------------------------
 
+/**
+ * The women's profile, asked on first entry to the section (Roadmap doc, 2026-11-28:
+ * present condition). Stored encrypted like the rest of the section.
+ */
+export const womensAboutMeSchema = z.object({
+  maritalStatus: z.enum(['MARRIED', 'UNMARRIED']),
+  children: z.enum(['NONE', 'ONE', 'TWO_PLUS']),
+  pregnant: z.boolean(),
+  /** How periods are now; STOPPED (menopause) quiets the period predictions in the app. */
+  periodStatus: z.enum(['REGULAR', 'IRREGULAR', 'STOPPED']),
+});
+export type WomensAboutMe = z.infer<typeof womensAboutMeSchema>;
+
 export interface CycleSettingsResponse {
+  /** null until the women's profile was answered. */
+  aboutMe: WomensAboutMe | null;
   avgCycleDays: number;
   avgPeriodDays: number;
   goal: CycleGoal;
@@ -54,6 +69,7 @@ export const updateCycleSettingsRequestSchema = z
     goal: cycleGoalSchema,
     appLockEnabled: z.boolean(),
     remindersOn: z.boolean(),
+    aboutMe: womensAboutMeSchema,
   })
   .partial()
   .refine((body) => Object.keys(body).length > 0, { message: 'Send at least one field' });

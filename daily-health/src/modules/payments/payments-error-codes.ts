@@ -17,4 +17,15 @@ export const PaymentsErrorCode = {
   PAYOUT_ACCOUNT_MISSING: 'PAYOUT_ACCOUNT_MISSING',
   /** Development-only payment simulation used in production. */
   DEV_PAYMENT_DISABLED: 'DEV_PAYMENT_DISABLED',
+  /** No active coupon with this code (also: not started yet, switched off). */
+  COUPON_INVALID: 'COUPON_INVALID',
+  COUPON_EXPIRED: 'COUPON_EXPIRED',
+  /** maxClaims people already claimed it. */
+  COUPON_LIMIT_REACHED: 'COUPON_LIMIT_REACHED',
+  COUPON_ALREADY_CLAIMED: 'COUPON_ALREADY_CLAIMED',
+  /** Wrong purpose, below minAmount, or nothing left to take off (details.reason). */
+  COUPON_NOT_APPLICABLE: 'COUPON_NOT_APPLICABLE',
+  /** Admin: another coupon has this code. */
+  COUPON_CODE_TAKEN: 'COUPON_CODE_TAKEN',
+  COUPON_NOT_FOUND: 'COUPON_NOT_FOUND',
 } as const;

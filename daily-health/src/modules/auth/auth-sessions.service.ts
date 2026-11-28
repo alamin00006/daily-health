@@ -45,7 +45,7 @@ export class AuthSessionsService {
 
   /** Registers/updates the device and opens a new session on it. */
   async startSession(
-    user: Pick<User, 'id' | 'email' | 'phone' | 'role' | 'isGuest'>,
+    user: Pick<User, 'id' | 'email' | 'phone' | 'fullName' | 'role' | 'isGuest'>,
     device: DeviceInfo,
     tx: Tx = this.prisma,
   ): Promise<AuthTokensResponse> {
@@ -210,7 +210,7 @@ export class AuthSessionsService {
   }
 
   private tokens(
-    user: Pick<User, 'id' | 'email' | 'phone' | 'role' | 'isGuest'>,
+    user: Pick<User, 'id' | 'email' | 'phone' | 'fullName' | 'role' | 'isGuest'>,
     sessionId: string,
     secret: string,
   ): AuthTokensResponse {
@@ -224,6 +224,7 @@ export class AuthSessionsService {
       id: user.id,
       email: user.email,
       phone: user.phone,
+      fullName: user.fullName,
       role: user.role,
       isGuest: user.isGuest,
     };

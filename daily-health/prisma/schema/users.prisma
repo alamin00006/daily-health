@@ -67,6 +67,9 @@ model PatientProfile {
   heightCm         Decimal?    @db.Decimal(5, 1)
   district         String?
   avatarStorageKey String?
+  /// When the "complete your profile" form was answered (age, gender, illnesses or none).
+  /// The app keeps most features closed until the own profile has it (Roadmap doc, 2026-11-28).
+  healthInfoCompletedAt DateTime? @db.Timestamptz(3)
   /// ref auth.User
   createdByUserId  String      @db.Uuid
   /// Soft delete: other modules keep rows that reference this id.

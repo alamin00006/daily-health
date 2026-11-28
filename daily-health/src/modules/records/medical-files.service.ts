@@ -12,16 +12,26 @@ import { StoredUploadsService } from '../../core/uploads/stored-uploads.service.
 import { UploadedFileProcessorService } from '../../core/uploads/uploaded-file-processor.service.js';
 import type { MedicalFile } from '../../generated/prisma/client.js';
 import type { PaginatedResponse } from '../../shared-contracts/common-fields.contract.js';
-import type {
-  ListMedicalFilesQuery,
-  MedicalFileResponse,
-  UpdateMedicalFileRequest,
-  UploadMedicalFileFields,
+import {
+  labTestName,
+  MAX_MEDICAL_FILE_BYTES,
+  type LabTestCode,
+  type LabTestSummaryResponse,
+  type ListMedicalFilesQuery,
+  type MedicalFileResponse,
+  type UpdateMedicalFileRequest,
+  type UploadMedicalFileFields,
 } from '../../shared-contracts/records.contract.js';
 import type { ProfileAccess } from '../users/profile-access.service.js';
 import { RecordsErrorCode } from './records-error-codes.js';
 
 const TITLE_CONTEXT = 'records.MedicalFile.title';
+const DETAIL_CONTEXTS = {
+  institute: 'records.MedicalFile.institute',
+  purpose: 'records.MedicalFile.purpose',
+  consultantName: 'records.MedicalFile.consultantName',
+  note: 'records.MedicalFile.note',
+} as const;
 
 /**
  * Lab reports, prescription scans and imaging. Files go through the upload
@@ -45,6 +55,17 @@ export class MedicalFilesService {
     file: Buffer,
     fields: UploadMedicalFileFields,
   ): Promise<MedicalFileResponse> {
+    if (
+      (fields.type === 'LAB_REPORT' || fields.type === 'PRESCRIPTION_SCAN') &&
+      file.length > MAX_MEDICAL_FILE_BYTES
+    ) {
+      throw new AppException(
+        RecordsErrorCode.MEDICAL_FILE_TOO_LARGE,
+        'Reports and prescriptions can be up to 5 MB',
+        HttpStatus.PAYLOAD_TOO_LARGE,
+        { maxBytes: MAX_MEDICAL_FILE_BYTES },
+      );
+    }
     const processed = await this.uploadProcessor.process(file, {
       allowPdf: true,
     });
@@ -61,6 +82,12 @@ export class MedicalFilesService {
           mimeType: processed.mimeType,
           sizeBytes: processed.data.length,
           reportDate: toDate(fields.reportDate),
+          // A test only means something on a lab report or a scan.
+          testCode:
+            fields.type === 'LAB_REPORT' || fields.type === 'IMAGING'
+              ? (fields.testCode ?? null)
+              : null,
+          ...this.encryptDetails(fields),
           uploadedByUserId: userId,
         },
       });
@@ -75,31 +102,95 @@ export class MedicalFilesService {
     return this.toResponse(row);
   }
 
-  /** Newest uploads first; filter by type. */
+  /** Newest uploads first; filter by type. One test's reports come newest report date first. */
   async list(
     userId: string,
     access: ProfileAccess,
     query: ListMedicalFilesQuery,
   ): Promise<PaginatedResponse<MedicalFileResponse>> {
-    const rows = await this.prisma.medicalFile.findMany({
-      where: {
-        patientId: access.profile.id,
-        deletedAt: null,
-        ...(query.type ? { type: query.type } : {}),
-        ...afterCursor('createdAt', query.cursor),
-      },
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      take: query.limit + 1,
-    });
+    const page = await this.listForPatient(access.profile.id, query);
     this.audit(userId, access, 'medical-file.list', access.profile.id, {
       type: query.type ?? 'ALL',
+      ...(query.testCode ? { testCode: query.testCode } : {}),
+    });
+    return page;
+  }
+
+  /**
+   * Files of a patient, no access check: callers check first (ProfileAccessService
+   * for members, a live RecordShare for providers).
+   */
+  async listForPatient(
+    patientId: string,
+    query: Pick<ListMedicalFilesQuery, 'type' | 'testCode' | 'cursor' | 'limit'>,
+  ): Promise<PaginatedResponse<MedicalFileResponse>> {
+    const byTest = Boolean(query.testCode);
+    // One test's history is read by report date; everything else by upload.
+    const sortField = byTest ? 'reportDate' : 'createdAt';
+    const rows = await this.prisma.medicalFile.findMany({
+      where: {
+        patientId,
+        deletedAt: null,
+        ...(query.type ? { type: query.type } : {}),
+        ...(byTest ? { testCode: query.testCode, reportDate: { not: null } } : {}),
+        ...afterCursor(sortField, query.cursor),
+      },
+      orderBy: [{ [sortField]: 'desc' }, { id: 'desc' }],
+      take: query.limit + 1,
     });
     return toKeysetPage(
       rows,
       query.limit,
-      (row) => row.createdAt,
+      (row) => (byTest ? row.reportDate! : row.createdAt),
       (row) => this.toResponse(row),
     );
+  }
+
+  /** Lab reports grouped by test ("by name, then by date" in the Roadmap doc). */
+  async testSummary(userId: string, access: ProfileAccess): Promise<LabTestSummaryResponse[]> {
+    const groups = await this.prisma.medicalFile.groupBy({
+      by: ['testCode'],
+      where: { patientId: access.profile.id, deletedAt: null, type: 'LAB_REPORT', testCode: { not: null } },
+      _count: { _all: true },
+      _max: { reportDate: true },
+    });
+    // "OTHER" shows the latest typed name.
+    const other = groups.some((g) => g.testCode === 'OTHER')
+      ? await this.prisma.medicalFile.findFirst({
+          where: { patientId: access.profile.id, deletedAt: null, type: 'LAB_REPORT', testCode: 'OTHER' },
+          orderBy: { createdAt: 'desc' },
+          select: { title: true },
+        })
+      : null;
+    this.audit(userId, access, 'medical-file.list', access.profile.id, { type: 'LAB_TESTS' });
+    return groups
+      .map((g) => {
+        const code = g.testCode as LabTestCode;
+        return {
+          testCode: code,
+          name:
+            labTestName(code) ??
+            (other
+              ? g._count._all > 1
+                ? `${this.encryption.decrypt(other.title, TITLE_CONTEXT)} ও অন্যান্য`
+                : this.encryption.decrypt(other.title, TITLE_CONTEXT)
+              : 'অন্যান্য'),
+          count: g._count._all,
+          latestReportDate: g._max.reportDate?.toISOString().slice(0, 10) ?? null,
+        };
+      })
+      .sort((a, b) => (b.latestReportDate ?? '').localeCompare(a.latestReportDate ?? ''));
+  }
+
+  /** How many (not deleted) files each patient has, for the provider's shared list. */
+  async countByPatients(patientIds: string[]): Promise<Map<string, number>> {
+    if (patientIds.length === 0) return new Map();
+    const groups = await this.prisma.medicalFile.groupBy({
+      by: ['patientId'],
+      where: { patientId: { in: [...new Set(patientIds)] }, deletedAt: null },
+      _count: { _all: true },
+    });
+    return new Map(groups.map((g) => [g.patientId, g._count._all]));
   }
 
   /** Titles of this patient's (not deleted) files, for other modules (prescribed tests). */
@@ -133,13 +224,14 @@ export class MedicalFilesService {
     const row = await this.prisma.medicalFile.update({
       where: { id: fileId },
       data: {
-        ...(input.type !== undefined ? { type: input.type } : {}),
         ...(input.title !== undefined
           ? { title: this.encryption.encrypt(input.title, TITLE_CONTEXT) }
           : {}),
         ...(input.reportDate !== undefined
           ? { reportDate: toDate(input.reportDate) }
           : {}),
+        ...(input.testCode !== undefined ? { testCode: input.testCode } : {}),
+        ...this.encryptDetails(input),
       },
     });
     this.audit(userId, access, 'medical-file.update', row.id, {
@@ -197,7 +289,30 @@ export class MedicalFilesService {
     });
   }
 
-  private toResponse(row: MedicalFile): MedicalFileResponse {
+  /**
+   * The free-text details, encrypted (erd.md "এনক্রিপশন": records). `undefined` leaves a
+   * column as it is, `null` clears it.
+   */
+  private encryptDetails(input: {
+    institute?: string | null;
+    purpose?: string | null;
+    consultantName?: string | null;
+    note?: string | null;
+  }) {
+    const data: Partial<Record<keyof typeof DETAIL_CONTEXTS, Uint8Array<ArrayBuffer> | null>> = {};
+    for (const field of Object.keys(DETAIL_CONTEXTS) as (keyof typeof DETAIL_CONTEXTS)[]) {
+      const value = input[field];
+      if (value === undefined) continue;
+      data[field] = value ? this.encryption.encrypt(value, DETAIL_CONTEXTS[field]) : null;
+    }
+    return data;
+  }
+
+  private decryptDetail(value: Uint8Array | null, field: keyof typeof DETAIL_CONTEXTS): string | null {
+    return value ? this.encryption.decrypt(value, DETAIL_CONTEXTS[field]) : null;
+  }
+
+  toResponse(row: MedicalFile): MedicalFileResponse {
     const urls = this.uploads.urls(row.storageKey, row.mimeType);
     return {
       id: row.id,
@@ -208,6 +323,11 @@ export class MedicalFilesService {
       reportDate: row.reportDate
         ? row.reportDate.toISOString().slice(0, 10)
         : null,
+      testCode: (row.testCode as LabTestCode | null) ?? null,
+      institute: this.decryptDetail(row.institute, 'institute'),
+      purpose: this.decryptDetail(row.purpose, 'purpose'),
+      consultantName: this.decryptDetail(row.consultantName, 'consultantName'),
+      note: this.decryptDetail(row.note, 'note'),
       uploadedByUserId: row.uploadedByUserId,
       fileUrl: urls.url,
       thumbnailUrl: urls.thumbnailUrl,

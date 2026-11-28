@@ -56,10 +56,30 @@ export interface VerifyOtpResponse {
 
 const verificationTokenSchema = z.string().min(20).max(2048);
 
+/** The person's name as typed at sign-up (Bangla or English). */
+export const fullNameSchema = z
+  .string()
+  .trim()
+  .transform((name) => name.replace(/\s+/g, ' '))
+  .pipe(z.string().min(2, 'At least 2 characters').max(80));
+
 // POST /api/v1/auth/signup
+// The app signs up with a verified phone plus an optional (unverified) email and a
+// coupon code (Roadmap doc, 2026-11-26); the panel still signs up with a verified email.
 export const signupRequestSchema = z.object({
   verificationToken: verificationTokenSchema,
   password: passwordSchema,
+  /** Optional for older app builds and the panel; the app's form always sends it. */
+  fullName: fullNameSchema.optional(),
+  /** Extra contact email for a phone sign-up. Stored unverified; ignored for an email sign-up. */
+  email: emailSchema.optional(),
+  /** Checked with POST /coupons/check first; claimed after the account is made. */
+  couponCode: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .regex(/^[A-Z0-9-]{3,32}$/)
+    .optional(),
   device: deviceInfoSchema,
 });
 export type SignupRequest = z.infer<typeof signupRequestSchema>;
@@ -126,6 +146,8 @@ export interface AuthUserSummary {
   email: string | null;
   /** E.164; set for accounts opened (or verified) with a phone number. */
   phone: string | null;
+  /** Name typed at sign-up; null for guests and older accounts. */
+  fullName: string | null;
   role: UserRole;
   isGuest: boolean;
 }

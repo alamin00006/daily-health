@@ -22,6 +22,7 @@ import type {
 } from '../../shared-contracts/payments.contract.js';
 import { NotificationDeliveryService } from '../notifications/notification-delivery.service.js';
 import type { RefundResult } from './gateways/payment-gateway.js';
+import { CouponsService } from './coupons.service.js';
 import { PaymentGatewaysService } from './payment-gateways.service.js';
 import { transactionRow } from './payments.service.js';
 import { PaymentsErrorCode } from './payments-error-codes.js';
@@ -48,6 +49,7 @@ export class RefundsService {
     private readonly prisma: PrismaService,
     private readonly gateways: PaymentGatewaysService,
     private readonly delivery: NotificationDeliveryService,
+    private readonly coupons: CouponsService,
   ) {}
 
   @OnEvent(APPOINTMENT_CANCELLED_EVENT, { async: true, promisify: true })
@@ -237,13 +239,16 @@ export class RefundsService {
         payment.status === 'REFUNDED'
           ? payment.refundedAmount
           : Prisma.Decimal.min(payment.amount, payment.refundedAmount.plus(refund.amount));
+      const fullyRefunded = refunded.gte(payment.amount);
       await tx.payment.update({
         where: { id: payment.id },
         data: {
           refundedAmount: refunded,
-          status: refunded.gte(payment.amount) ? 'REFUNDED' : 'PARTIALLY_REFUNDED',
+          status: fullyRefunded ? 'REFUNDED' : 'PARTIALLY_REFUNDED',
         },
       });
+      // Money all back: the coupon can be used again.
+      if (fullyRefunded) await this.coupons.release(tx, payment.id);
       const earning = await tx.providerEarning.findFirst({
         where: { paymentId: payment.id, kind: 'EARNING' },
       });

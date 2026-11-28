@@ -44,6 +44,10 @@ model AppSetting {
   id              Int      @id @default(1)
   /// "#0f5c5a"; white text on it must stay readable (checked by the API).
   primaryColor    String   @default("#0f5c5a")
+  /// Support buttons in the app's account page (Roadmap doc); E.164 Bangladeshi
+  /// numbers, null = the button stays hidden.
+  supportWhatsApp String?
+  supportHotline  String?
   /// ref auth.User
   updatedByUserId String?  @db.Uuid
   updatedAt       DateTime @updatedAt @db.Timestamptz(3)
@@ -61,5 +65,24 @@ model AppSettingChange {
   createdAt       DateTime @default(now()) @db.Timestamptz(3)
 
   @@index([createdAt(sort: Desc)])
+  @@schema("admin")
+}
+
+enum LegalPageSlug {
+  TERMS
+  PRIVACY
+
+  @@schema("admin")
+}
+
+/// Terms and privacy policy, written by admins in the panel and shown in the app.
+model LegalPage {
+  slug            LegalPageSlug @id
+  /// Plain text with blank lines between paragraphs.
+  body            String
+  /// ref auth.User
+  updatedByUserId String        @db.Uuid
+  updatedAt       DateTime      @updatedAt @db.Timestamptz(3)
+
   @@schema("admin")
 }

@@ -3,6 +3,7 @@ import type { PaymentResponse } from '../../shared-contracts/payments.contract.j
 
 export const PAYMENT_INCLUDE = {
   refunds: { orderBy: { createdAt: 'asc' } },
+  redemption: { select: { claimId: true, status: true, coupon: { select: { code: true } } } },
 } satisfies Prisma.PaymentInclude;
 
 export type PaymentWithRefunds = Prisma.PaymentGetPayload<{
@@ -18,6 +19,9 @@ export function toPaymentResponse(payment: PaymentWithRefunds): PaymentResponse 
     patientId: payment.patientId,
     description: payment.description,
     amount: payment.amount.toNumber(),
+    listAmount: payment.listAmount.toNumber(),
+    discountAmount: payment.discountAmount.toNumber(),
+    couponCode: payment.redemption?.coupon.code ?? null,
     currency: 'BDT',
     gateway: payment.gateway,
     method: payment.method,

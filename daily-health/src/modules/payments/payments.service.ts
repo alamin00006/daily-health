@@ -35,6 +35,7 @@ import {
   type PaymentGateway,
   type VerifyResult,
 } from './gateways/payment-gateway.js';
+import { CouponsService } from './coupons.service.js';
 import { PayableRegistryService } from './payable-registry.service.js';
 import { PaymentGatewaysService } from './payment-gateways.service.js';
 import { PAYMENT_INCLUDE, toPaymentResponse } from './payment-responses.js';
@@ -77,6 +78,7 @@ export class PaymentsService {
     private readonly accounts: UserAccountsService,
     private readonly delivery: NotificationDeliveryService,
     private readonly events: EventEmitter2,
+    private readonly coupons: CouponsService,
   ) {}
 
   async start(
@@ -86,6 +88,12 @@ export class PaymentsService {
   ): Promise<StartPaymentResponse> {
     const item = await this.payables.resolve(input.purpose, userId, input.referenceId);
     const returnUrl = this.config.payments.appReturnUrl;
+    // The platform pays a coupon's discount; the gateway charges the rest.
+    const discount = input.couponClaimId
+      ? await this.coupons.quoteForCheckout(userId, input.couponClaimId, input.purpose, item.amount)
+      : 0;
+    const payAmount = Math.round((item.amount - discount) * 100) / 100;
+    const claimId = input.couponClaimId ?? null;
 
     const live = await this.prisma.payment.findFirst({
       where: {
@@ -105,7 +113,9 @@ export class PaymentsService {
         checked.payerUserId === userId &&
         checked.checkoutUrl &&
         checked.gateway === this.gateways.active().name &&
-        Number(checked.amount) === item.amount &&
+        Number(checked.amount) === payAmount &&
+        Number(checked.listAmount) === item.amount &&
+        (live.redemption?.claimId ?? null) === claimId &&
         (checked.checkoutExpiresAt?.getTime() ?? 0) > Date.now() + 60_000
       ) {
         return {
@@ -114,17 +124,14 @@ export class PaymentsService {
           returnUrl,
         };
       }
-      await this.prisma.payment.updateMany({
-        where: { id: checked.id, status: 'INITIATED' },
-        data: { status: 'CANCELLED', failureReason: 'REPLACED' },
-      });
+      await this.closeOpen([checked.id], 'REPLACED');
     }
 
     const gateway = this.gateways.active();
     let payment: Payment;
     try {
-      payment = await this.prisma.$transaction(async (tx) =>
-        tx.payment.create({
+      payment = await this.prisma.$transaction(async (tx) => {
+        const created = await tx.payment.create({
           data: {
             invoiceNo: await this.readableIds.nextReference('PAYMENT', tx),
             payerUserId: userId,
@@ -133,11 +140,17 @@ export class PaymentsService {
             referenceId: input.referenceId,
             providerId: item.providerId,
             description: item.description,
-            amount: new Prisma.Decimal(item.amount),
+            amount: new Prisma.Decimal(payAmount),
+            listAmount: new Prisma.Decimal(item.amount),
+            discountAmount: new Prisma.Decimal(discount),
             gateway: gateway.name,
           },
-        }),
-      );
+        });
+        if (claimId) {
+          await this.coupons.reserve(tx, { claimId, paymentId: created.id, discountAmount: discount });
+        }
+        return created;
+      });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
         // Another device started paying for the same thing at the same moment.
@@ -157,7 +170,7 @@ export class PaymentsService {
       const checkout = await gateway.createCheckout({
         paymentId: payment.id,
         invoiceNo: payment.invoiceNo,
-        amount: item.amount,
+        amount: payAmount,
         description: item.description,
         customer: {
           name: item.payerName,
@@ -190,9 +203,12 @@ export class PaymentsService {
       });
       return { payment: toPaymentResponse(full), checkoutUrl: checkout.checkoutUrl, returnUrl };
     } catch (error) {
-      await this.prisma.payment.update({
-        where: { id: payment.id },
-        data: { status: 'FAILED', failureReason: 'CHECKOUT_FAILED' },
+      await this.prisma.$transaction(async (tx) => {
+        await tx.payment.update({
+          where: { id: payment.id },
+          data: { status: 'FAILED', failureReason: 'CHECKOUT_FAILED' },
+        });
+        await this.coupons.release(tx, payment.id);
       });
       if (error instanceof GatewayUnavailableError) {
         this.logger.warn(error.message);
@@ -339,10 +355,7 @@ export class PaymentsService {
           checked.status === 'INITIATED' &&
           Date.now() - checked.createdAt.getTime() > ABANDONED_AFTER_MS
         ) {
-          await this.prisma.payment.updateMany({
-            where: { id: checked.id, status: 'INITIATED' },
-            data: { status: 'CANCELLED', failureReason: 'ABANDONED' },
-          });
+          await this.closeOpen([checked.id], 'ABANDONED');
         }
       } catch (error) {
         this.logger.warn(`Reconcile ${payment.invoiceNo}: ${(error as Error).message}`);
@@ -383,12 +396,15 @@ export class PaymentsService {
   private async applyVerification(payment: Payment, result: VerifyResult): Promise<Payment> {
     if (result.state === 'PENDING') return payment;
     if (result.state !== 'PAID') {
-      await this.prisma.payment.updateMany({
-        where: { id: payment.id, status: 'INITIATED' },
-        data: {
-          status: result.state === 'CANCELLED' ? 'CANCELLED' : 'FAILED',
-          failureReason: result.gatewayStatus.slice(0, 200),
-        },
+      await this.prisma.$transaction(async (tx) => {
+        const closed = await tx.payment.updateMany({
+          where: { id: payment.id, status: 'INITIATED' },
+          data: {
+            status: result.state === 'CANCELLED' ? 'CANCELLED' : 'FAILED',
+            failureReason: result.gatewayStatus.slice(0, 200),
+          },
+        });
+        if (closed.count === 1) await this.coupons.release(tx, payment.id);
       });
       return this.prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
     }
@@ -397,9 +413,12 @@ export class PaymentsService {
       this.logger.error(
         `Amount mismatch on ${payment.invoiceNo}: expected ${payment.amount.toString()}, gateway ${result.amount}`,
       );
-      await this.prisma.payment.update({
-        where: { id: payment.id },
-        data: { status: 'FAILED', failureReason: 'AMOUNT_MISMATCH' },
+      await this.prisma.$transaction(async (tx) => {
+        await tx.payment.update({
+          where: { id: payment.id },
+          data: { status: 'FAILED', failureReason: 'AMOUNT_MISMATCH' },
+        });
+        await this.coupons.release(tx, payment.id);
       });
       return this.prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
     }
@@ -423,6 +442,7 @@ export class PaymentsService {
           where: { id: other.id },
           data: { status: 'CANCELLED', failureReason: 'PAID_ON_EARLIER_ATTEMPT' },
         });
+        await this.coupons.release(tx, other.id);
       }
       const duplicate = other?.status === 'SUCCESS';
       const paid = await tx.payment.update({
@@ -446,7 +466,10 @@ export class PaymentsService {
             requestedBy: 'SYSTEM',
           },
         });
+        // Refunded in full, so its coupon use goes back.
+        await this.coupons.release(tx, paid.id);
       } else {
+        await this.coupons.markUsed(tx, paid.id);
         await this.recordEarning(tx, paid);
       }
       return { payment: paid, newlyPaid: !duplicate, duplicate };
@@ -491,10 +514,13 @@ export class PaymentsService {
     });
   }
 
-  /** The provider's share; the platform keeps PLATFORM_FEE_PERCENT. */
+  /**
+   * The provider's share; the platform keeps PLATFORM_FEE_PERCENT. Worked out from the
+   * list price: a coupon discount comes out of the platform's side, not the provider's.
+   */
   private async recordEarning(tx: Tx, payment: Payment): Promise<void> {
     if (!payment.providerId) return;
-    const gross = payment.amount;
+    const gross = payment.listAmount;
     const fee = gross
       .mul(this.config.payments.platformFeePercent)
       .div(100)
@@ -523,6 +549,19 @@ export class PaymentsService {
         channels: ['PUSH', 'IN_APP'],
       },
     ]);
+  }
+
+  /** Closes unfinished checkouts and gives their coupon uses back. */
+  private async closeOpen(paymentIds: string[], reason: 'REPLACED' | 'ABANDONED'): Promise<void> {
+    for (const id of paymentIds) {
+      await this.prisma.$transaction(async (tx) => {
+        const closed = await tx.payment.updateMany({
+          where: { id, status: 'INITIATED' },
+          data: { status: 'CANCELLED', failureReason: reason },
+        });
+        if (closed.count === 1) await this.coupons.release(tx, id);
+      });
+    }
   }
 
   private async requireForPayer(userId: string, paymentId: string): Promise<Payment> {
